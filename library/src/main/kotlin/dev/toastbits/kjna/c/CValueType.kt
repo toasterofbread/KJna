@@ -1,4 +1,4 @@
-package dev.toastbits.kje.c
+package dev.toastbits.kjna.c
 
 data class CValueType(
     val type: CType,

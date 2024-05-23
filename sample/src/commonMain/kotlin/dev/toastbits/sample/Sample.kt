@@ -1,11 +1,11 @@
 package dev.toastbits.sample
 
-import dev.toastbits.kje.c.CHeaderParser
-import dev.toastbits.kje.c.CTypeDef
-import dev.toastbits.kje.c.CFunctionDeclaration
-import dev.toastbits.kje.c.CType
-import dev.toastbits.kje.c.CValueType
-import dev.toastbits.kje.c.resolve
+import dev.toastbits.kjna.c.CHeaderParser
+import dev.toastbits.kjna.c.CTypeDef
+import dev.toastbits.kjna.c.CFunctionDeclaration
+import dev.toastbits.kjna.c.CType
+import dev.toastbits.kjna.c.CValueType
+import dev.toastbits.kjna.c.resolve
 
 fun main() {
     val test: String = "/usr/include/mpv/client.h"

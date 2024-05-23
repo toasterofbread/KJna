@@ -7,10 +7,7 @@ pluginManagement {
 
     plugins {
         val kotlin_version: String = extra["kotlin.version"] as String
-        kotlin("multiplatform").version(kotlin_version)
-
-        val dokka_version: String = extra["dokka.version"] as String
-        id("org.jetbrains.dokka").version(dokka_version)
+        kotlin("jvm").version(kotlin_version)
 
         id("com.vanniktech.maven.publish").version("0.28.0")
 
@@ -29,4 +26,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "kjna"
 include(":library")
+include(":plugin")
 include(":sample")

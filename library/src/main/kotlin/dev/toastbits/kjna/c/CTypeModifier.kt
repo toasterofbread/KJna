@@ -1,6 +1,6 @@
-package dev.toastbits.kje.c
+package dev.toastbits.kjna.c
 
-import dev.toastbits.kje.grammar.*
+import dev.toastbits.kjna.grammar.*
 
 enum class CTypeModifier {
     SHORT,

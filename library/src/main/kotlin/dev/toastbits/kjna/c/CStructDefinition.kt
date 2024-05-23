@@ -1,7 +1,7 @@
 
-package dev.toastbits.kje.c
+package dev.toastbits.kjna.c
 
-import dev.toastbits.kje.grammar.*
+import dev.toastbits.kjna.grammar.*
 
 data class CStructDefinition(
     val fields: Map<String, CValueType>

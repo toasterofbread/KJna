@@ -1,12 +1,10 @@
 import com.vanniktech.maven.publish.SonatypeHost
-import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.JavadocJar
 import com.strumenta.antlrkotlin.gradle.AntlrKotlinTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("multiplatform")
-    id("org.jetbrains.dokka")
+    kotlin("jvm")
     id("com.vanniktech.maven.publish")
     id("com.strumenta.antlr-kotlin")
 }
@@ -14,12 +12,12 @@ plugins {
 val generateKotlinGrammarSource by tasks.registering(AntlrKotlinTask::class) {
     dependsOn("cleanGenerateKotlinGrammarSource")
 
-    source = fileTree(project.file("src/jvmMain/antlr")) {
+    source = fileTree(project.file("src/main/antlr")) {
         include("**/*.g4")
     }
 
-    val package_name: String = "dev.toastbits.kje.grammar"
-    packageName = "dev.toastbits.kje.grammar"
+    val package_name: String = "dev.toastbits.kjna.grammar"
+    packageName = "dev.toastbits.kjna.grammar"
 
     arguments = listOf("-visitor")
 
@@ -28,16 +26,8 @@ val generateKotlinGrammarSource by tasks.registering(AntlrKotlinTask::class) {
 }
 
 kotlin {
-    jvm()
-
-    linuxX64()
-    linuxArm64()
-    mingwX64()
-
-    applyDefaultHierarchyTemplate()
-
     sourceSets {
-        val commonMain by getting {
+        val main by getting {
             kotlin {
                 srcDir(generateKotlinGrammarSource.get().outputDirectory!!)
             }
@@ -50,48 +40,48 @@ kotlin {
     }
 }
 
+tasks.matching { it.name.lowercase().contains("sourcesjar") || it.name.contains("compile") }.all {
+    dependsOn(generateKotlinGrammarSource)
+}
+
 tasks.withType<KotlinCompile> {
     dependsOn(generateKotlinGrammarSource)
 }
 
-// mavenPublishing {
-//     coordinates("dev.toastbits", "kje", "0.0.1")
+mavenPublishing {
+    val project_version: String = extra["project.version"] as String
+    coordinates("dev.toastbits", "kjna", project_version)
 
-//     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
-//     signAllPublications()
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    signAllPublications()
 
-//     configure(KotlinMultiplatform(
-//         javadocJar = JavadocJar.Dokka("dokkaHtml"),
-//         sourcesJar = true
-//     ))
+    pom {
+        name.set("kjna")
+        description.set("TODO")
+        url.set("https:/github.com/toasterofbread/kjna")
+        inceptionYear.set("2024")
 
-//     pom {
-//         name.set("kjna")
-//         description.set("")
-//         url.set("https:/github.com/toasterofbread/kje")
-//         inceptionYear.set("2024")
-
-//         licenses {
-//             license {
-//                 name.set("Apache-2.0")
-//                 url.set("https://www.apache.org/licenses/LICENSE-2.0")
-//             }
-//         }
-//         developers {
-//             developer {
-//                 id.set("toasterofbread")
-//                 name.set("Talo Halton")
-//                 email.set("talohalton@gmail.com")
-//                 url.set("https://github.com/toasterofbread")
-//             }
-//         }
-//         scm {
-//             connection.set("https://github.com/toasterofbread/kmp-template.git")
-//             url.set("https://github.com/toasterofbread/kmp-template")
-//         }
-//         issueManagement {
-//             system.set("Github")
-//             url.set("https://github.com/toasterofbread/kmp-template/issues")
-//         }
-//     }
-// }
+        licenses {
+            license {
+                name.set("Apache-2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0")
+            }
+        }
+        developers {
+            developer {
+                id.set("toasterofbread")
+                name.set("Talo Halton")
+                email.set("talohalton@gmail.com")
+                url.set("https://github.com/toasterofbread")
+            }
+        }
+        scm {
+            connection.set("https://github.com/toasterofbread/kjna.git")
+            url.set("https://github.com/toasterofbread/kjna")
+        }
+        issueManagement {
+            system.set("Github")
+            url.set("https://github.com/toasterofbread/kjna/issues")
+        }
+    }
+}

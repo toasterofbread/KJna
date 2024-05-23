@@ -1,7 +1,7 @@
-package dev.toastbits.kje.c
+package dev.toastbits.kjna.c
 
-import dev.toastbits.kje.grammar.*
-import dev.toastbits.kje.c.*
+import dev.toastbits.kjna.grammar.*
+import dev.toastbits.kjna.c.*
 import java.io.File
 import org.antlr.v4.kotlinruntime.CharStreams
 import org.antlr.v4.kotlinruntime.CharStream
@@ -11,7 +11,7 @@ import org.antlr.v4.kotlinruntime.ParserRuleContext
 import java.nio.file.Path
 import java.nio.file.Paths
 
-open class CHeaderParser {
+class CHeaderParser(include_dirs: List<String>? = null) {
     data class HeaderInfo(
         val absolute_path: String,
         val typedefs: List<CTypeDef>,
@@ -19,6 +19,8 @@ open class CHeaderParser {
     )
 
     private val parsed_headers: MutableMap<String, HeaderInfo> = mutableMapOf()
+    val include_dirs: List<Path> =
+        (include_dirs ?: listOf("/usr/include/", "/usr/local/include/", "/usr/include/linux/")).map { Paths.get(it) }
 
     fun getAllHeaders(): List<HeaderInfo> = parsed_headers.values.toList()
     fun getHeaderByInclude(header: String): HeaderInfo = parsed_headers[header]!!
@@ -71,20 +73,12 @@ open class CHeaderParser {
         }
     }
 
-    open fun getIncludeDirs(): List<Path> =
-        listOf(
-            "/usr/include/",
-            "/usr/local/include/",
-            "/usr/include/linux/"
-        ).map { Paths.get(it) }
-
-    private fun getHeaderFile(path: String): File {
+    fun getHeaderFile(path: String): File {
         var file: File = File(path)
         if (file.isFile()) {
             return file
         }
 
-        val include_dirs: List<Path> = getIncludeDirs()
         for (dir in include_dirs) {
             file = dir.resolve(path).toFile()
             if (file.isFile()) {
