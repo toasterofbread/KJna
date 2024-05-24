@@ -8,11 +8,6 @@ data class CFunctionDeclaration(
     val parameters: List<CFunctionParameter> = emptyList()
 )
 
-data class CFunctionParameter(
-    val name: String?,
-    val type: CValueType
-)
-
 fun parseFunctionDeclaration(external_declaration: CParser.ExternalDeclarationContext): CFunctionDeclaration? {
     val declarator: CParser.DeclaratorContext =
         external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.firstOrNull()?.declarator() ?: return null

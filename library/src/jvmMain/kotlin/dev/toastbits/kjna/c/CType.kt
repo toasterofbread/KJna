@@ -183,6 +183,6 @@ private fun parseModifierSpecifier(type_specifier: CParser.TypeSpecifierContext)
         return CTypeModifier.UNSIGNED
     }
 
-    println("Ignoring unknown type modifier '${type_specifier.text}'")
+    // println("Ignoring unknown type modifier '${type_specifier.text}'")
     return null
 }

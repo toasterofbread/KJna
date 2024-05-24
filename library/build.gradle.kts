@@ -4,7 +4,7 @@ import com.strumenta.antlrkotlin.gradle.AntlrKotlinTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm")
+    kotlin("multiplatform")
     id("com.vanniktech.maven.publish")
     id("com.strumenta.antlr-kotlin")
 }
@@ -12,7 +12,7 @@ plugins {
 val generateKotlinGrammarSource by tasks.registering(AntlrKotlinTask::class) {
     dependsOn("cleanGenerateKotlinGrammarSource")
 
-    source = fileTree(project.file("src/main/antlr")) {
+    source = fileTree(project.file("src/jvmMain/antlr")) {
         include("**/*.g4")
     }
 
@@ -26,8 +26,15 @@ val generateKotlinGrammarSource by tasks.registering(AntlrKotlinTask::class) {
 }
 
 kotlin {
+    jvm()
+    linuxX64()
+    linuxArm64()
+    mingwX64()
+
     sourceSets {
-        val main by getting {
+        val commonMain by getting
+
+        val jvmMain by getting {
             kotlin {
                 srcDir(generateKotlinGrammarSource.get().outputDirectory!!)
             }

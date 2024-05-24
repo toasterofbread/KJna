@@ -49,10 +49,10 @@ fun parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationCon
     return CTypeDef(name!!, CValueType(type, pointer_depth = pointer_depth))
 }
 
-fun CType.TypeDef.resolve(typedefs: Map<String, CValueType>): CValueType? {
+fun CType.TypeDef.resolve(typedefs: Map<String, CValueType>): CValueType {
     val passed: MutableList<String> = mutableListOf(name)
     while (true) {
-        val type: CValueType = typedefs[passed.last()] ?: return null.also { println(passed) }
+        val type: CValueType = typedefs[passed.last()] ?: break
         if (type.type is CType.TypeDef) {
             if (passed.contains(type.type.name)) {
                 throw RuntimeException("Recursive typedef (this=$name, duplicate=${type.type.name}, passed=$passed}")
@@ -64,4 +64,6 @@ fun CType.TypeDef.resolve(typedefs: Map<String, CValueType>): CValueType? {
             return type
         }
     }
+
+    throw RuntimeException("Unresolved typedef '$this'")
 }

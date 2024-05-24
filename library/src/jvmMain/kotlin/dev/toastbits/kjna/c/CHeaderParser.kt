@@ -16,7 +16,10 @@ class CHeaderParser(include_dirs: List<String>? = null) {
         val absolute_path: String,
         val typedefs: List<CTypeDef>,
         val functions: List<CFunctionDeclaration>
-    )
+    ) {
+        override fun toString(): String =
+            "HeaderInfo(absolute_path=$absolute_path, typedefs: ${typedefs.size}, functions: ${functions.size})"
+    }
 
     private val parsed_headers: MutableMap<String, HeaderInfo> = mutableMapOf()
     val include_dirs: List<Path> =
@@ -29,8 +32,8 @@ class CHeaderParser(include_dirs: List<String>? = null) {
     fun getAllTypedefsMap(): Map<String, CValueType> = getAllTypedefs().associate { it.name to it.type }
     fun getAllFunctions(): List<CFunctionDeclaration> = getAllHeaders().flatMap { it.functions }
 
-    fun parse(headers: Set<String>) {
-        val all_headers: MutableList<String> = headers.toMutableList()
+    fun parse(headers: List<String>) {
+        val all_headers: MutableList<String> = headers.distinct().toMutableList()
 
         var included_headers: List<String> = parseIncludedFiles(headers)
         while (included_headers.isNotEmpty()) {

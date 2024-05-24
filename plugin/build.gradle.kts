@@ -33,6 +33,7 @@ dependencies {
 
     implementation("de.undercouch:gradle-download-task:5.6.0")
     implementation("org.codehaus.plexus:plexus-archiver:4.9.2")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.0")
 }
 
 publishing {
