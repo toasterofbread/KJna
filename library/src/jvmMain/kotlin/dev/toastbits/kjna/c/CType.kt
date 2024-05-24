@@ -28,6 +28,8 @@ sealed interface CType {
     data class Union(val values: Map<String, CValueType>): CType
 
     data class Enum(val name: String, val values: Map<String, Int>): CType
+
+    data class Function(val shape: CFunctionDeclaration): CType
 }
 
 fun parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>): CType {

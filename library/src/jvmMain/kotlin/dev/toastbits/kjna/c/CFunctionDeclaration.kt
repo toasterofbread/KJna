@@ -8,37 +8,70 @@ data class CFunctionDeclaration(
     val parameters: List<CFunctionParameter> = emptyList()
 )
 
-fun parseFunctionDeclaration(external_declaration: CParser.ExternalDeclarationContext): CFunctionDeclaration? {
-    val declarator: CParser.DeclaratorContext =
-        external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.firstOrNull()?.declarator() ?: return null
+private fun parseFunctionParameter(param: CParser.ParameterDeclarationContext): CFunctionParameter {
+    val param_declarator: CParser.DeclaratorContext = param.declarator() ?: return CFunctionParameter(null, CValueType(CType.Primitive.VOID, 0))
+    val direct_declarator: CParser.DirectDeclaratorContext = param_declarator.directDeclarator()
 
-    val name: String = declarator.directDeclarator().directDeclarator()?.Identifier()?.text ?: return null
+    val type: CType =
+        param.declarationSpecifiers()?.declarationSpecifier()?.let { parseDeclarationSpecifierType(it) }
+        ?: throw RuntimeException("No type in ${param.text}")
 
-    val return_pointer_depth: Int = declarator.pointer()?.Star()?.size ?: 0
-    val return_type: CType = external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier()?.let { parseDeclarationSpecifierType(it) } ?: return null
+    val type_pointer_depth: Int = param_declarator.pointer()?.Star()?.size ?: 0
 
-    val declarator_parameters: List<CParser.ParameterDeclarationContext> =
-        declarator.directDeclarator().parameterTypeList()?.parameterList()?.parameterDeclaration() ?: return null
+    val callback_declarator: CParser.DeclaratorContext? = direct_declarator.directDeclarator()?.declarator()
+    if (callback_declarator != null) {
+        val param_name: String? = callback_declarator.directDeclarator().Identifier()?.text
+        val pointer_depth: Int = callback_declarator.pointer()?.Star()?.size ?: 0
 
-    val parameters: List<CFunctionParameter> = declarator_parameters.mapNotNull { param ->
-        val type_info = param.declarationSpecifiers()?.declarationSpecifier() ?: return@mapNotNull null
+        val callback_params: List<CFunctionParameter> = direct_declarator.parameterTypeList()?.parameterList()?.parameterDeclaration()?.map { parseFunctionParameter(it) } ?: throw RuntimeException(param.text)
 
-        val param_declarator: CParser.DeclaratorContext = param.declarator() ?: return@mapNotNull null
-        val pointer_depth: Int = param_declarator.pointer()?.Star()?.size ?: 0
-        val param_name: String? = param_declarator.directDeclarator().Identifier()?.text
-
-        CFunctionParameter(
+        return CFunctionParameter(
             name = param_name,
             type = CValueType(
-                type = parseDeclarationSpecifierType(type_info),
+                type = CType.Function(
+                    CFunctionDeclaration(
+                        name = param_name ?: "",
+                        return_type = CValueType(type, type_pointer_depth),
+                        parameters = callback_params
+                    )
+                ),
                 pointer_depth = pointer_depth
             )
         )
     }
 
-    return CFunctionDeclaration(
-        name = name,
-        return_type = CValueType(return_type, pointer_depth = return_pointer_depth),
-        parameters = parameters
+    val param_name: String? = direct_declarator.Identifier()?.text
+    return CFunctionParameter(
+        name = param_name,
+        type = CValueType(
+            type = type,
+            pointer_depth = type_pointer_depth
+        )
     )
+}
+
+fun parseFunctionDeclaration(external_declaration: CParser.ExternalDeclarationContext): CFunctionDeclaration? {
+    try {
+        val declarator: CParser.DeclaratorContext =
+            external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.firstOrNull()?.declarator() ?: return null
+
+        val name: String = declarator.directDeclarator().directDeclarator()?.Identifier()?.text ?: return null
+
+        val return_pointer_depth: Int = declarator.pointer()?.Star()?.size ?: 0
+        val return_type: CType = external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier()?.let { parseDeclarationSpecifierType(it) } ?: return null
+
+        val declarator_parameters: List<CParser.ParameterDeclarationContext> =
+            declarator.directDeclarator().parameterTypeList()?.parameterList()?.parameterDeclaration() ?: return null
+
+        val parameters: List<CFunctionParameter> = declarator_parameters.map { parseFunctionParameter(it) }
+
+        return CFunctionDeclaration(
+            name = name,
+            return_type = CValueType(return_type, pointer_depth = return_pointer_depth),
+            parameters = parameters
+        )
+    }
+    catch (e: Throwable) {
+        throw RuntimeException(external_declaration.text, e)
+    }
 }

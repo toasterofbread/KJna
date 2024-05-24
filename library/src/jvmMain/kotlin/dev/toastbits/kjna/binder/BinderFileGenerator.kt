@@ -16,7 +16,14 @@ class BinderFileGenerator(
     fun generateFile(target: KJnaBinderTarget): String {
         imports.clear()
 
-        val function_headers: List<String> = header.info.functions.map { getKotlinFunctionHeader(it) }
+        val function_headers: List<String> = header.info.functions.map { function ->
+            try {
+                getKotlinFunctionHeader(function)
+            }
+            catch (e: Throwable) {
+                throw RuntimeException("Generating function $function in $header failed", e)
+            }
+        }
 
         val file_content: StringBuilder = StringBuilder()
         file_content.apply {
@@ -41,15 +48,10 @@ class BinderFileGenerator(
             appendLine("object ${header.class_name} {")
 
             for ((index, function) in header.info.functions.withIndex()) {
-                try {
-                    val function_header: String = function_headers[index]
-                    append("    ")
-                    append(target.implementKotlinFunction(function, function_header, this@BinderFileGenerator))
-                    appendLine()
-                }
-                catch (e: Throwable) {
-                    throw RuntimeException("Generating function $function in $header failed", e)
-                }
+                val function_header: String = function_headers[index]
+                append("    ")
+                append(target.implementKotlinFunction(function, function_header, this@BinderFileGenerator))
+                appendLine()
             }
 
             appendLine("}")
@@ -101,9 +103,18 @@ class BinderFileGenerator(
                 used_param_names.add(param_name)
             }
 
+            val param_type: String? = param.type.toKotlinTypeName(false) { createParameterUnion(function.name, param_name, it) }
+            if (param_type == null) {
+                if (function.parameters.size == 1) {
+                    break
+                }
+
+                throw RuntimeException("void used on its own $function")
+            }
+
             header.append(param_name)
             header.append(": ")
-            header.append(param.type.toKotlinTypeName(false) { createParameterUnion(function.name, param_name, it) })
+            header.append(param_type)
 
             if (index + 1 != function.parameters.size) {
                 header.append(", ")
@@ -112,7 +123,7 @@ class BinderFileGenerator(
 
         header.append(")")
 
-        val return_type: String = function.return_type.toKotlinTypeName(true) { createParameterUnion(function.name, null, it) }
+        val return_type: String = function.return_type.toKotlinTypeName(true) { createParameterUnion(function.name, null, it) }!!
         if (return_type != "Unit") {
             header.append(": ")
             header.append(return_type)
@@ -124,7 +135,7 @@ class BinderFileGenerator(
     private fun CValueType?.toKotlinTypeName(
         is_return_type: Boolean,
         createUnion: (CType.Union) -> String
-    ): String {
+    ): String? {
         if (this == null) {
             return "Unit"
         }
@@ -137,20 +148,17 @@ class BinderFileGenerator(
                 return "Unit"
             }
 
-            type = "Any"
-        }
-
-        while (pointer_depth >= 2) {
-            pointer_depth -= 2
-            type = "Array<$type>"
+            if (pointer_depth == 0) {
+                return null
+            }
         }
 
         while (pointer_depth-- > 0) {
-            if (type == "Any") {
-                type = getRuntimeType(KJnaVoidPointer::class)
+            if (type == null) {
+                type = getRuntimeType(KJnaVoidPointer::class) + "?"
             }
             else {
-                type = getRuntimeType(KJnaPointer::class) + "<$type>"
+                type = getRuntimeType(KJnaPointer::class) + "<$type>?"
             }
         }
 
@@ -212,7 +220,6 @@ class BinderFileGenerator(
                         }
                     }
                 }
-
             }
 
             is CType.Struct -> {
@@ -227,6 +234,26 @@ class BinderFileGenerator(
 
             is CType.Union -> {
                 kotlin_type = createUnion(this)
+            }
+
+            is CType.Function -> {
+                kotlin_type = buildString {
+                    append('(')
+                    for ((index, param) in shape.parameters.withIndex()) {
+                        if (param.name != null) {
+                            append(param.name)
+                            append(": ")
+                        }
+                        append(param.type.toKotlinTypeName(false, createUnion))
+
+                        if (index + 1 != shape.parameters.size) {
+                            append(", ")
+                        }
+                    }
+
+                    append(") -> ")
+                    append(shape.return_type.toKotlinTypeName(true, createUnion))
+                }
             }
         }
 
