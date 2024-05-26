@@ -29,7 +29,7 @@ repositories {
 
 dependencies {
     val project_version: String = rootProject.extra["project.version"] as String
-    implementation("dev.toastbits:kjna:$project_version")
+    implementation("dev.toastbits.kjna:library:$project_version")
 
     implementation("de.undercouch:gradle-download-task:5.6.0")
     implementation("org.codehaus.plexus:plexus-archiver:4.9.2")

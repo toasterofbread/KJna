@@ -1,6 +1,7 @@
 package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
+import dev.toastbits.kjna.c.PackageGenerationScope
 
 data class CFunctionDeclaration(
     val name: String,
@@ -8,7 +9,7 @@ data class CFunctionDeclaration(
     val parameters: List<CFunctionParameter> = emptyList()
 )
 
-private fun parseFunctionParameter(param: CParser.ParameterDeclarationContext): CFunctionParameter {
+private fun PackageGenerationScope.parseFunctionParameter(param: CParser.ParameterDeclarationContext): CFunctionParameter {
     val param_declarator: CParser.DeclaratorContext = param.declarator() ?: return CFunctionParameter(null, CValueType(CType.Primitive.VOID, 0))
     val direct_declarator: CParser.DirectDeclaratorContext = param_declarator.directDeclarator()
 
@@ -50,7 +51,7 @@ private fun parseFunctionParameter(param: CParser.ParameterDeclarationContext): 
     )
 }
 
-fun parseFunctionDeclaration(external_declaration: CParser.ExternalDeclarationContext): CFunctionDeclaration? {
+fun PackageGenerationScope.parseFunctionDeclaration(external_declaration: CParser.ExternalDeclarationContext): CFunctionDeclaration? {
     try {
         val declarator: CParser.DeclaratorContext =
             external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.firstOrNull()?.declarator() ?: return null

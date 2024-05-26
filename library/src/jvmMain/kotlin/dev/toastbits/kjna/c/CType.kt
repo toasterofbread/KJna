@@ -25,14 +25,14 @@ sealed interface CType {
 
     data class Struct(val name: String, val definition: CStructDefinition): CType
 
-    data class Union(val values: Map<String, CValueType>): CType
+    data class Union(val values: Map<String, CValueType>, val anonymous_index: Int?): CType
 
     data class Enum(val name: String, val values: Map<String, Int>): CType
 
     data class Function(val shape: CFunctionDeclaration): CType
 }
 
-fun parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>): CType {
+fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>): CType {
     require(declaration_specifiers.isNotEmpty())
 
     val qualifiers: MutableList<CParser.TypeQualifierContext> = mutableListOf()
@@ -46,7 +46,7 @@ fun parseDeclarationSpecifierType(declaration_specifiers: List<CParser.Declarati
     return parseType(specifiers, qualifiers)
 }
 
-fun parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList()): CType {
+fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList()): CType {
     require(specifiers.isNotEmpty())
 
     val modifiers: List<CTypeModifier> = specifiers.dropLast(1).mapNotNull { parseModifierSpecifier(it) }
@@ -103,7 +103,7 @@ fun parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<C
     return type
 }
 
-private fun parseTypeSpecifier(type_specifier: CParser.TypeSpecifierContext): CType {
+private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.TypeSpecifierContext): CType {
     if (type_specifier.Void() != null) {
         return CType.Primitive.VOID
     }
@@ -145,7 +145,7 @@ private fun parseTypeSpecifier(type_specifier: CParser.TypeSpecifierContext): CT
         }
         else if (struct_or_union.Union() != null) {
             check(specifier.Identifier()?.text == null) { type_specifier.text }
-            return CType.Union(struct_definition.fields)
+            return CType.Union(struct_definition.fields, ++anonymous_struct_index)
         }
         else {
             throw NotImplementedError(type_specifier.text)

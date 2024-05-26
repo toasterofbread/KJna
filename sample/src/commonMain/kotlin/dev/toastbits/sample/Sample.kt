@@ -4,7 +4,7 @@ import dev.toastbits.kjna.c.CHeaderParser
 import dev.toastbits.kjna.c.CTypeDef
 import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
-import dev.toastbits.kjna.c.CValueType
+import dev.toastbits.kjna.c.CTypeDef
 import dev.toastbits.kjna.c.resolve
 
 fun main() {
@@ -13,7 +13,7 @@ fun main() {
     val parser: CHeaderParser = CHeaderParser()
     parser.parse(setOf(test))
 
-    val typedefs: Map<String, CValueType> = parser.getAllTypedefsMap()
+    val typedefs: Map<String, CTypeDef> = parser.getAllTypedefsMap()
     val functions: List<CFunctionDeclaration> = parser.getAllFunctions()
 
     val mpv = parser.getHeaderByInclude(test)

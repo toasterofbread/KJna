@@ -2,12 +2,13 @@
 package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
+import dev.toastbits.kjna.c.PackageGenerationScope
 
 data class CStructDefinition(
     val fields: Map<String, CValueType>
 )
 
-fun parseStructDefinition(members: List<CParser.StructDeclarationContext>): CStructDefinition {
+fun PackageGenerationScope.parseStructDefinition(members: List<CParser.StructDeclarationContext>): CStructDefinition {
     val fields: MutableMap<String, CValueType> = mutableMapOf()
 
     for (member in members) {

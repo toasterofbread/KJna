@@ -10,8 +10,8 @@ class KJnaPlugin: Plugin<Project> {
             apply(DownloadTaskPlugin::class.java)
         }
 
-        project.tasks.create(KJnaGenerateTask.NAME, KJnaGenerateTask::class.java) {
-            it.group = "KJna"
+        project.tasks.create(KJnaGenerateTask.NAME, KJnaGenerateTask::class.java).apply {
+            group = "KJna"
         }
     }
 }

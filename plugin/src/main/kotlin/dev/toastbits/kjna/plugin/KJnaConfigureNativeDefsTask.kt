@@ -6,17 +6,17 @@ import java.io.File
 
 abstract class KJnaConfigureNativeDefsTask: DefaultTask() {
     @Input
-    lateinit var native_def_files: List<List<File>>
+    var native_def_files: List<List<File>> = emptyList()
 
     @Input
-    lateinit var packages: KJnaGeneratePackagesConfiguration
+    var packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration()
 
     @InputDirectory
-    lateinit var native_def_file_directory: File
+    lateinit var native_def_output_dir: File
 
     @TaskAction
     fun configureNativeDefs() {
-        for (file in native_def_file_directory.listFiles() ?: emptyArray()) {
+        for (file in native_def_output_dir.listFiles() ?: emptyArray()) {
             if (file.name.endsWith(".def")) {
                 file.delete()
             }

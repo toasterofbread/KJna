@@ -4,7 +4,7 @@ import dev.toastbits.kjna.grammar.*
 
 data class CTypeDef(val name: String, val type: CValueType)
 
-fun parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypeDef? {
+fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypeDef? {
     val specifiers: List<CParser.DeclarationSpecifierContext> =
         external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier() ?: return null
 
@@ -49,10 +49,10 @@ fun parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationCon
     return CTypeDef(name!!, CValueType(type, pointer_depth = pointer_depth))
 }
 
-fun CType.TypeDef.resolve(typedefs: Map<String, CValueType>): CValueType {
+fun CType.TypeDef.resolve(typedefs: Map<String, CTypeDef>): CValueType {
     val passed: MutableList<String> = mutableListOf(name)
     while (true) {
-        val type: CValueType = typedefs[passed.last()] ?: break
+        val type: CValueType = typedefs[passed.last()]?.type ?: break
         if (type.type is CType.TypeDef) {
             if (passed.contains(type.type.name)) {
                 throw RuntimeException("Recursive typedef (this=$name, duplicate=${type.type.name}, passed=$passed}")
@@ -65,5 +65,9 @@ fun CType.TypeDef.resolve(typedefs: Map<String, CValueType>): CValueType {
         }
     }
 
-    throw RuntimeException("Unresolved typedef '$this'")
+    when (passed.last()) {
+        "size_t" -> return CValueType(CType.Primitive.U_LONG, 0)
+    }
+
+    throw RuntimeException("Unresolved typedef '$this' -> '${passed.last()}' (${passed.size})")
 }

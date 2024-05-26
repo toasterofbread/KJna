@@ -1,3 +1,10 @@
+rootProject.name = "KJna"
+
+include(":plugin")
+include(":library")
+include(":runtime")
+include(":sample")
+
 pluginManagement {
     repositories {
         google()
@@ -23,8 +30,3 @@ dependencyResolutionManagement {
         gradlePluginPortal()
     }
 }
-
-rootProject.name = "kjna"
-include(":library")
-include(":plugin")
-include(":sample")

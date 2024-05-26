@@ -29,10 +29,10 @@ class CHeaderParser(include_dirs: List<String>? = null) {
     fun getHeaderByInclude(header: String): HeaderInfo = parsed_headers[header]!!
 
     fun getAllTypedefs(): List<CTypeDef> = getAllHeaders().flatMap { it.typedefs }
-    fun getAllTypedefsMap(): Map<String, CValueType> = getAllTypedefs().associate { it.name to it.type }
+    fun getAllTypedefsMap(): Map<String, CTypeDef> = getAllTypedefs().associate { it.name to it }
     fun getAllFunctions(): List<CFunctionDeclaration> = getAllHeaders().flatMap { it.functions }
 
-    fun parse(headers: List<String>) {
+    fun parse(headers: List<String>, package_scope: PackageGenerationScope) {
         val all_headers: MutableList<String> = headers.distinct().toMutableList()
 
         var included_headers: List<String> = parseIncludedFiles(headers)
@@ -59,13 +59,13 @@ class CHeaderParser(include_dirs: List<String>? = null) {
             val tree: CParser.TranslationUnitContext = parser.translationUnit()
 
             for (declaration in tree.externalDeclaration()) {
-                val function: CFunctionDeclaration? = parseFunctionDeclaration(declaration)
+                val function: CFunctionDeclaration? = with (package_scope) { parseFunctionDeclaration(declaration) }
                 if (function != null) {
                     functions.add(function)
                     continue
                 }
 
-                val typedef: CTypeDef? = parseTypedefDeclaration(declaration)
+                val typedef: CTypeDef? = with (package_scope) { parseTypedefDeclaration(declaration) }
                 if (typedef != null) {
                     typedefs.add(typedef)
                     continue

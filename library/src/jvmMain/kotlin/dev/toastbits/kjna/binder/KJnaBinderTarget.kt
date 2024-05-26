@@ -1,10 +1,20 @@
 package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CFunctionDeclaration
+import dev.toastbits.kjna.c.CType
+import dev.toastbits.kjna.c.CValueType
 
-interface KJnaBinderTarget {
+sealed interface KJnaBinderTarget {
     fun getClassModifiers(): List<String> = emptyList()
-    fun implementKotlinFunction(function: CFunctionDeclaration, function_header: String, context: BinderFileGenerator): String
+    fun getSourceFileExtension(): String = "kt"
+
+    fun implementKotlinFunction(function: CFunctionDeclaration, function_header: String, context: BindingGenerator.GenerationScope): String
+    
+    fun implementKotlinStructConstructor(struct: CType.Struct, context: BindingGenerator.GenerationScope): String?
+    fun implementKotlinStructField(name: String, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String
+    
+    fun implementKotlinUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String?
+    fun implementKotlinUnionField(name: String, type: CValueType, type_name: String, union: CType.Union, context: BindingGenerator.GenerationScope): String
 
     companion object {
         val SHARED: KJnaBinderTarget = BinderTargetShared()

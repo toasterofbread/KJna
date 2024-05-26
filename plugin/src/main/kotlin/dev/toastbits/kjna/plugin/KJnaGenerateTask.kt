@@ -1,5 +1,6 @@
 package dev.toastbits.kjna.plugin
 
+import java.io.File
 import org.gradle.api.tasks.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
@@ -9,36 +10,33 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
-import java.io.File
+import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
+import dev.toastbits.kjna.c.PackageGenerationScope
 import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.KJnaBinderTarget
+import dev.toastbits.kjna.binder.BinderTargetShared
+import dev.toastbits.kjna.binder.BinderTargetJvmJextract
+import dev.toastbits.kjna.binder.BinderTargetNativeCinterop
+import javax.inject.Inject
 
-abstract class KJnaGenerateTask: DefaultTask() {
-    @InputDirectory
-    @Optional
-    var jvm_source_dir: File? = null
-
-    @InputDirectory
-    @Optional
-    var native_source_dir: File? = null
-
-    @Input
-    @Optional
-    var packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration()
-        set(value) {
-            field = value
-            configureNativeDefs.packages = value
-        }
-
-    @Input
-    @Optional
-    var include_dirs: List<String> =
+abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
+    // Inputs
+    override var packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration()
+    override var build_targets: List<KJnaBuildTarget> = KJnaBuildTarget.entries.toList()
+    override var include_dirs: List<String> =
         listOf(
             "/usr/include/",
             "/usr/local/include/",
             "/usr/include/linux/"
         )
+
+    // Outputs
+    private val build_dir: File = project.layout.buildDirectory.dir("kjna").get().asFile
+    override val common_output_dir: File = build_dir.resolve("src/common").apply { mkdirs() }
+    override val jvm_output_dir: File = build_dir.resolve("src/jvm").apply { mkdirs() }
+    override val native_output_dir: File = build_dir.resolve("src/native").apply { mkdirs() }
+    override val native_def_output_dir: File = build_dir.resolve("def").apply { mkdirs() }
 
     var jextract_binary: File?
         @Internal
@@ -57,75 +55,84 @@ abstract class KJnaGenerateTask: DefaultTask() {
         get() = prepareJextract.jextract_archive_extract_directory
         set(value) { prepareJextract.jextract_archive_extract_directory = value }
 
-    @OutputDirectory
-    val native_def_file_directory: File = project.layout.buildDirectory.dir("kjna-defs").get().asFile.also { it.mkdirs() }
-
-    private val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
-    private val prepareJextract: KJnaPrepareJextractTask = project.tasks.register(KJnaPrepareJextractTask.NAME, KJnaPrepareJextractTask::class.java).get()
+    @get:Internal
+    internal val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
+    @get:Internal
+    internal val prepareJextract: KJnaPrepareJextractTask = project.tasks.register(KJnaPrepareJextractTask.NAME, KJnaPrepareJextractTask::class.java).get()
 
     init {
         description = "TODO"
 
-        configureNativeDefs.native_def_file_directory = native_def_file_directory
-        dependsOn(configureNativeDefs)
+        project.afterEvaluate {
+            configureNativeDefs.native_def_output_dir = native_def_output_dir
+            configureNativeDefs.packages = packages
 
-        dependsOn(prepareJextract)
-    }
-
-    fun packages(jvm_target: KotlinJvmTarget?, native_targets: List<KotlinNativeTarget>, configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
-        if (jvm_source_dir == null && jvm_target != null) {
-            jvm_source_dir = jvm_target.compilations.first().defaultSourceSet.kotlin.sourceDirectories.first()
+            dependsOn(configureNativeDefs)
+            dependsOn(prepareJextract)
         }
-
-        val parser: CHeaderParser = CHeaderParser(include_dirs)
-
-        val packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration().also { configure(it) }
-        this.packages = packages
-
-        val def_files: MutableList<List<File>> = mutableListOf()
-
-        for (pkg in packages.packages) {
-            def_files.add(native_targets.map { target ->
-                val compilation: KotlinNativeCompilation = target.compilations.getByName(KotlinCompilation.MAIN_COMPILATION_NAME)
-                pkg.addToCompilation(compilation, parser, native_def_file_directory)
-            })
-        }
-
-        configureNativeDefs.native_def_files = def_files
     }
 
     @TaskAction
     fun generateKJnaBindings() {
         val bind_targets: List<KJnaBinderTarget> =
-            listOfNotNull(
-                KJnaBinderTarget.SHARED,
-                jvm_source_dir?.let { KJnaBinderTarget.JVM_JEXTRACT },
-                native_source_dir?.let { KJnaBinderTarget.NATIVE_CINTEROP }
-            )
+            build_targets.map { target ->
+                when (target) {
+                    KJnaBuildTarget.SHARED -> KJnaBinderTarget.SHARED
+                    KJnaBuildTarget.JVM -> KJnaBinderTarget.JVM_JEXTRACT
+                    KJnaBuildTarget.NATIVE -> KJnaBinderTarget.NATIVE_CINTEROP
+                }
+            }
 
         if (bind_targets.isEmpty()) {
             return
         }
 
         val parser: CHeaderParser = CHeaderParser(include_dirs)
-        parser.parse(packages.packages.flatMap { it.headers.map { it.header_path } })
+        for (pkg in packages.packages) {
+            val scope: PackageGenerationScope = PackageGenerationScope()
+            parser.parse(pkg.headers.map { it.header_path }, scope)
+        }
 
-        val header_bindings: List<KJnaBinder.Header> =
-            packages.packages.flatMap { pkg ->
-                pkg.headers.map { header ->
-                    KJnaBinder.Header(
-                        class_name = header.class_name,
-                        package_name = pkg.package_name,
-                        info = parser.getHeaderByInclude(header.header_path)
-                    )
-                }
+        val bindings: List<KJnaBinder.GeneratedBindings> =
+            packages.packages.map { pkg ->
+                val header_bindings: List<KJnaBinder.Header> =
+                    pkg.headers.map { header ->
+                        KJnaBinder.Header(
+                            class_name = header.class_name,
+                            package_name = pkg.package_name,
+                            info = parser.getHeaderByInclude(header.header_path)
+                        )
+                    }
+
+                val binder: KJnaBinder = KJnaBinder(pkg.package_name, header_bindings, parser.getAllTypedefsMap())
+                return@map binder.generateBindings(bind_targets)
             }
 
+        for (target in bind_targets) {
+            val target_directory: File =
+                when (target) {
+                    is BinderTargetShared -> common_output_dir
+                    is BinderTargetJvmJextract -> jvm_output_dir
+                    is BinderTargetNativeCinterop -> native_output_dir
+                }
+
+            if (target_directory.exists()) {
+                target_directory.deleteRecursively()
+            }
+
+            for (binding in bindings) {
+                for ((cls, content) in binding.files[target]!!) {
+                    val file: File = target_directory.resolve(cls.replace(".", "/") + '.' + target.getSourceFileExtension())
+                    if (!file.exists()) {
+                        file.ensureParentDirsCreated()
+                        file.createNewFile()
+                    }
+                    file.writeText(content)
+                }
+            }
+        }
+
         // var jextract: File = prepareJextract.final_jextract_binary
-
-        val binder: KJnaBinder = KJnaBinder(header_bindings, parser.getAllTypedefsMap(), bind_targets)
-        binder.generateBindings()
-
         // executeJextractCommand(jextract, listOf("--help"))
     }
 

@@ -27,9 +27,6 @@ val generateKotlinGrammarSource by tasks.registering(AntlrKotlinTask::class) {
 
 kotlin {
     jvm()
-    linuxX64()
-    linuxArm64()
-    mingwX64()
 
     sourceSets {
         val commonMain by getting
@@ -57,15 +54,15 @@ tasks.withType<KotlinCompile> {
 
 mavenPublishing {
     val project_version: String = extra["project.version"] as String
-    coordinates("dev.toastbits", "kjna", project_version)
+    coordinates("dev.toastbits.kjna", "library", project_version)
 
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
     pom {
-        name.set("kjna")
+        name.set("KJna library")
         description.set("TODO")
-        url.set("https:/github.com/toasterofbread/kjna")
+        url.set("https:/github.com/toasterofbread/KJna")
         inceptionYear.set("2024")
 
         licenses {
@@ -83,12 +80,12 @@ mavenPublishing {
             }
         }
         scm {
-            connection.set("https://github.com/toasterofbread/kjna.git")
-            url.set("https://github.com/toasterofbread/kjna")
+            connection.set("https://github.com/toasterofbread/KJna.git")
+            url.set("https://github.com/toasterofbread/KJna")
         }
         issueManagement {
             system.set("Github")
-            url.set("https://github.com/toasterofbread/kjna/issues")
+            url.set("https://github.com/toasterofbread/KJna/issues")
         }
     }
 }

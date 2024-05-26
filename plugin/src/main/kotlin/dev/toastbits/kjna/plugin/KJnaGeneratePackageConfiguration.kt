@@ -5,6 +5,7 @@ import java.io.File
 import dev.toastbits.kjna.c.CHeaderParser
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
+import dev.toastbits.kjna.binder.BinderTargetNativeCinterop
 
 data class KJnaGeneratePackagesConfiguration(
     var packages: List<Package> = emptyList()
@@ -39,7 +40,7 @@ fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(
 
     compilation.cinterops.apply {
         create(package_name) { cinterop ->
-            cinterop.packageName = package_name
+            cinterop.packageName = BinderTargetNativeCinterop.getNativePackageName(package_name)
             cinterop.headers(headers.map { parser.getHeaderFile(it.header_path) })
             cinterop.defFile(def_file)
         }
