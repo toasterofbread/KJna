@@ -2,42 +2,9 @@ package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
+import withIndex
 
-fun generateStruct(struct: CType.Struct, target: KJnaBinderTarget, generator: BindingGenerator): String  =
-    buildString {
-        val body: String
-        val unions: MutableList<String> = mutableListOf()
-
-        val imports: List<Pair<String, String?>> =
-            generator.generationScope {
-                lateinit var createUnion: (CType.Union, String) -> String
-                createUnion = { union, field ->
-                    val union_name: String = getUnionTypeName(field)
-                    val union_content: String? = generateUnion(union_name, union, target) { union, name -> createUnion(union, union_name + '_' + name) }
-                    if (union_content != null) {
-                        unions.add(union_content)
-                    }
-                    union_name
-                }
-
-                body = generateStructBody(struct, target, createUnion)
-            }
-
-        append(generateImportBlock(imports))
-
-        append(body)
-
-        if (unions.isNotEmpty()) {
-            appendLine()
-        }
-
-        for (union in unions) {
-            appendLine()
-            append(union)
-        }
-    }
-
-private fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, target: KJnaBinderTarget, createUnion: (CType.Union, String) -> String): String =
+fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, target: KJnaBinderTarget): String =
     buildString {
         for (modifier in target.getClassModifiers()) {
             append(modifier)
@@ -55,12 +22,18 @@ private fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.St
         if (struct.definition.fields.isNotEmpty()) {
             appendLine(" {")
 
-            for ((name, type) in struct.definition.fields) {
-                val type_name: String? = type.toKotlinTypeName(false) { createUnion(it, name) }
+            for ((index, name, type) in struct.definition.fields.withIndex()) {
+                val type_name: String? = type.toKotlinTypeName(false) { createUnion(struct.name, index, it) }
                 if (type_name == null) {
                     throw NullPointerException(struct.toString())
                 }
-                appendLine(target.implementKotlinStructField(name, type, type_name, struct, this@generateStructBody).prependIndent("    "))
+                appendLine(target.implementKotlinStructField(name, index, type, type_name, struct, this@generateStructBody).prependIndent("    "))
+            }
+
+            val companion_object: String? = target.getStructCompanionObject(struct, this@generateStructBody)
+            if (companion_object != null) {
+                appendLine()
+                appendLine(companion_object.prependIndent("    "))
             }
 
             append("}")

@@ -17,7 +17,7 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
         return "constructor(val $STRUCT_MEM_PROPERTY_NAME: $MEMORY_SEGMENT_CLASS)"
     }
 
-    override fun implementKotlinStructField(name: String, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
+    override fun implementKotlinStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
         return "TODO"
     }
 
@@ -25,7 +25,11 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
         return null
     }
 
-    override fun implementKotlinUnionField(name: String, type: CValueType, type_name: String, union: CType.Union, context: BindingGenerator.GenerationScope): String {
+    override fun implementKotlinUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String {
+        return "TODO"
+    }
+
+    override fun getStructCompanionObject(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
         return "TODO"
     }
 

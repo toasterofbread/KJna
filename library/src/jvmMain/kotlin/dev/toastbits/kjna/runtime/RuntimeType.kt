@@ -1,11 +1,16 @@
 package dev.toastbits.kjna.runtime
 
-data class RuntimeType(
+// Runtime class information stored here because the runtime library is compiled for Java 21
+open class RuntimeType(
     val name: String,
     val coordinates: String
 ) {
-    companion object {
-        val KJnaPointer = RuntimeType("KJnaPointer", "dev.toastbits.kjna.runtime.KJnaPointer")
-        val KJnaTypedPointer = RuntimeType("KJnaTypedPointer", "dev.toastbits.kjna.runtime.KJnaTypedPointer")
+    object KJnaMemScope: RuntimeType("KJnaMemScope", "dev.toastbits.kjna.runtime.KJnaMemScope")
+    object KJnaPointer: RuntimeType("KJnaPointer", "dev.toastbits.kjna.runtime.KJnaPointer")
+    object KJnaTypedPointer: RuntimeType("KJnaTypedPointer", "dev.toastbits.kjna.runtime.KJnaTypedPointer") {
+        val pointer: String = "pointer"
+        val native_scope: String = "native_scope"
     }
+    object KJnaAllocationCompanion: RuntimeType("KJnaAllocationCompanion", "dev.toastbits.kjna.runtime.KJnaAllocationCompanion")
+    object pointedAs: RuntimeType("pointedAs", "dev.toastbits.kjna.runtime.pointedAs")
 }

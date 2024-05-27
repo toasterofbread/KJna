@@ -4,6 +4,7 @@ import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
+import withIndex
 
 class BinderTargetShared(): KJnaBinderTarget {
     override fun getClassModifiers(): List<String> = listOf("expect")
@@ -16,7 +17,7 @@ class BinderTargetShared(): KJnaBinderTarget {
         return null
     }
 
-    override fun implementKotlinStructField(name: String, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
+    override fun implementKotlinStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType =
             if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
             else type
@@ -32,7 +33,7 @@ class BinderTargetShared(): KJnaBinderTarget {
         return null
     }
 
-    override fun implementKotlinUnionField(name: String, type: CValueType, type_name: String, union: CType.Union, context: BindingGenerator.GenerationScope): String {
+    override fun implementKotlinUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType =
             if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
             else type
@@ -46,5 +47,31 @@ class BinderTargetShared(): KJnaBinderTarget {
             ret += '?'
         }
         return ret
+    }
+
+    override fun getEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
+        buildString {
+            append("enum class ")
+            append(enm.name)
+            appendLine("(val $ENUM_CLASS_VALUE_PARAM: Int) {")
+
+            for ((index, name, value) in enm.values.withIndex()) {
+                append("    ")
+                append(name)
+                append('(')
+                append(value)
+                append(')')
+
+                if (index + 1 != enm.values.size) {
+                    append(',')
+                }
+                appendLine()
+            }
+
+            append('}')
+        }
+
+    companion object {
+        const val ENUM_CLASS_VALUE_PARAM: String = "value"
     }
 }

@@ -1,29 +1,28 @@
 package dev.toastbits.kjna.runtime
 
 import kotlinx.cinterop.CPointer
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.CPointed
-import kotlinx.cinterop.pointed
 
-actual class KJnaPointer(val pointer: CPointer<*>) {
-    actual inline fun <reified T: Any> cast(): T = TODO()
+actual open class KJnaPointer(var pointer: CPointer<*>) {
+    // actual inline fun <reified T: Any> cast(): T = TODO()
 }
 
-actual abstract class KJnaTypedPointer<T: Any>(val pointer: CPointer<*>) {
-    actual abstract fun get(): T?
+actual abstract class KJnaTypedPointer<T>(pointer: CPointer<*>): KJnaPointer(pointer) {
+    actual abstract fun get(): T
+    actual abstract fun set(value: T)
 
     actual companion object {
-        inline fun <T: Any, reified I: CPointed> of(pointer: CPointer<I>, noinline construct: (I) -> T?) =
-            object : KJnaTypedPointer<T>(pointer) {
-                override fun get(): T? {
-                    val r: I = pointer.pointedAs()
-                    return construct(r)
+        inline fun <reified T: Any> ofNativeObject(
+            pointer: CPointer<*>,
+            allocation_companion: KJnaAllocationCompanion<T> =
+                KJnaMemScope.getAllocationCompanion(T::class) ?: throw RuntimeException(T::class.toString())
+        ) = object : KJnaTypedPointer<T>(pointer) {
+                override fun get(): T {
+                    return allocation_companion.construct(this)
+                }
+
+                override fun set(value: T) {
+                    allocation_companion.set(value, this)
                 }
             }
     }
 }
-
-@OptIn(ExperimentalForeignApi::class)
-inline fun <reified T: CPointed> CPointer<*>.pointedAs(): T =
-    this.reinterpret<T>().pointed

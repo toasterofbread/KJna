@@ -11,54 +11,53 @@ class BindingGenerator(
     var getStructImport: (String) -> String,
     var getEnumImport: (String) -> String
 ) {
-    @OptIn(kotlin.contracts.ExperimentalContracts::class)
-    fun generationScope(action: GenerationScope.() -> Unit): List<Pair<String, String?>> {
-        contract {
-            callsInPlace(action, InvocationKind.EXACTLY_ONCE)
-        }
-
+    fun buildKotlinFile(target: KJnaBinderTarget, pkg: String, buildContent: StringBuilderGenerationScope.() -> Unit) {
         val imports: MutableList<Pair<String, String?>> = mutableListOf()
-        action(GenerationScope(imports))
-        return imports
+        val unions: MutableMap<String, String> = mutableMapOf()
+
+        val scope: StringBuilderGenerationScope =
+            object : StringBuilderGenerationScope(target, imports, unions) {
+                override fun build(): String {
+                    val content: String = this.toString()
+                    return buildString {
+                        appendLine("package $pkg")
+
+                        appendLine()
+                        append(generateImportBlock(imports))
+
+                        append(content)
+
+                        appendLine()
+                        for ((union, content) in unions) {
+                            appendLine(content)
+                        }
+                    }
+                }
+            }
+
+        buildContent(scope)
     }
 
-    fun generateHeaderFile(header: KJnaBinder.Header, target: KJnaBinderTarget): String {
-        val functions: List<String>
-        val imports: List<Pair<String, String?>> = generationScope {
-            functions = header.info.functions.map { function ->
-                try {
-                    val header: String = getKotlinFunctionHeader(function)
-                    return@map target.implementKotlinFunction(function, header, this)
-                }
-                catch (e: Throwable) {
-                    throw RuntimeException("Generating function $function in $header failed", e)
-                }
-            }
-        }
+    inner abstract class StringBuilderGenerationScope(
+        target: KJnaBinderTarget,
+        imports: MutableList<Pair<String, String?>>,
+        unions: MutableMap<String, String>
+    ): GenerationScope(target, imports, unions) {
+        private val string: StringBuilder = StringBuilder()
 
-        return buildString {
-            appendLine("package ${header.package_name}")
-            appendLine()
+        override fun toString(): String = string.toString()
 
-            append(generateImportBlock(imports))
+        fun append(content: Any) { string.append(content) }
+        fun appendLine() { string.appendLine() }
+        fun appendLine(content: Any) { string.appendLine(content) }
 
-            for (modifier in target.getClassModifiers()) {
-                append(modifier)
-                append(" ")
-            }
-            appendLine("object ${header.class_name} {")
-
-            for (function in functions) {
-                append("    ")
-                appendLine(function)
-            }
-
-            appendLine("}")
-        }
+        abstract fun build(): String
     }
 
-    inner class GenerationScope(
-        private val imports: MutableList<Pair<String, String?>>
+    inner open class GenerationScope(
+        val target: KJnaBinderTarget,
+        private val imports: MutableList<Pair<String, String?>>,
+        private val unions: MutableMap<String, String>
     ) {
         val binder: KJnaBinder get() = this@BindingGenerator.binder
 
@@ -66,26 +65,51 @@ class BindingGenerator(
             imports.add(Pair(coordinates, alias))
         }
 
+        fun getFunctionParameterName(name: String?, index: Int, used_names: List<String>): String {
+            if (name != null && !used_names.contains(name)) {
+                return name
+            }
+
+            val base: String = name ?: "p"
+
+            var offset: Int = 0
+            while (used_names.contains(base + (index + offset).toString())) {
+                offset++
+            }
+
+            return base + (index + offset).toString()
+        }
+
+        fun generateHeaderFileContent(header: KJnaBinder.Header): String =
+            buildString {
+                for (modifier in target.getClassModifiers()) {
+                    append(modifier)
+                    append(" ")
+                }
+                appendLine("object ${header.class_name} {")
+
+                for (function in header.info.functions) {
+                    try {
+                        val header: String = getKotlinFunctionHeader(function)
+                        appendLine(target.implementKotlinFunction(function, header, this@GenerationScope).prependIndent("    "))
+                    }
+                    catch (e: Throwable) {
+                        throw RuntimeException("Generating function $function in $header failed", e)
+                    }
+                }
+
+                append("}")
+            }
+
         fun getKotlinFunctionHeader(function: CFunctionDeclaration): String {
             val header: StringBuilder = StringBuilder("fun ${function.name}(")
 
-            val used_param_names: MutableList<String> = function.parameters.mapNotNull { it.name }.toMutableList()
+            val used_param_names: MutableList<String> = mutableListOf()
             for ((index, param) in function.parameters.withIndex()) {
-                val param_name: String
-                if (param.name != null) {
-                    param_name = param.name
-                }
-                else {
-                    var offset: Int = 0
-                    while (used_param_names.contains("p${index + offset}")) {
-                        offset++
-                    }
+                val param_name: String = getFunctionParameterName(param.name, index, used_param_names)
+                used_param_names.add(param_name)
 
-                    param_name = "p${index + offset}"
-                    used_param_names.add(param_name)
-                }
-
-                val param_type: String? = param.type.toKotlinTypeName(false) { createParameterUnion(function.name, param_name, it) }
+                val param_type: String? = param.type.toKotlinTypeName(false) { createUnion(function.name, index, it) }
                 if (param_type == null) {
                     if (function.parameters.size == 1) {
                         break
@@ -105,10 +129,14 @@ class BindingGenerator(
 
             header.append(")")
 
-            val return_type: String = function.return_type.toKotlinTypeName(true) { createParameterUnion(function.name, null, it) }!!
+            val return_type: String = function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, it) }!!
             if (return_type != "Unit") {
                 header.append(": ")
                 header.append(return_type)
+
+                if (function.return_type?.type == CType.Primitive.CHAR) {
+                    header.append('?')
+                }
             }
 
             return header.toString()
@@ -250,8 +278,16 @@ class BindingGenerator(
             importFromCoordinates(getEnumImport(enum_name), alias)
         }
 
-        private fun createParameterUnion(function_name: String, parameter_name: String?, union: CType.Union): String {
-            TODO("$function_name $parameter_name $union")
+        fun createUnion(scope_name: String, parameter_index: Int?, union: CType.Union): String {
+            val name: String = getUnion(scope_name, parameter_index)
+            check(!unions.contains(name)) { "Union name collision '$name'" }
+
+            unions[name] = generateUnion(name, union, target)
+            return name
+        }
+
+        fun getUnion(scope_name: String, parameter_index: Int?): String {
+            return scope_name + "_union_" + parameter_index?.toString().orEmpty()
         }
 
         fun importRuntimeType(type: RuntimeType): String {

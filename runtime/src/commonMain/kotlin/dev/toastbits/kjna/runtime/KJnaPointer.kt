@@ -1,11 +1,10 @@
 package dev.toastbits.kjna.runtime
 
-expect class KJnaPointer {
-    inline fun <reified T: Any> cast(): T
-}
+expect open class KJnaPointer
 
-expect abstract class KJnaTypedPointer<T: Any> {
-    abstract fun get(): T?
+expect abstract class KJnaTypedPointer<T>: KJnaPointer {
+    abstract fun get(): T
+    abstract fun set(value: T)
 
     companion object
 }
