@@ -32,8 +32,6 @@ open class KJnaPrepareJextractTask: DefaultTask() {
     lateinit var final_jextract_binary: File
 
     init {
-        outputs.upToDateWhen { false }
-
         project.afterEvaluate {
             final_jextract_binary = getFinalJextractBinaryFile()
         }

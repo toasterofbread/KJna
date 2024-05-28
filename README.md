@@ -92,7 +92,7 @@ kotlin {
                 add("kjna.libmpv") {
 
                     // Disabled packages will have no function implementations
-                    // Use the `isAvailable()` companion method to check at runtime
+                    // Use the 'isAvailable()' companion method to check at runtime
                     enabled = true
 
                     addHeader(

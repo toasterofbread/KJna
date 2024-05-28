@@ -7,18 +7,18 @@ plugins {
     signing
 }
 
-group = "dev.toastbits.kjna"
+group = "dev.toastbits"
 version = extra["project.version"] as String
 
 gradlePlugin {
-    website.set("https://github.com/toasterofbread/kjna")
-    vcsUrl.set("https://github.com/toasterofbread/kjna.git")
+    website.set("https://github.com/toasterofbread/KJna")
+    vcsUrl.set("https://github.com/toasterofbread/KJna.git")
     plugins {
         create("kjna") {
             id = "dev.toastbits.kjna"
             displayName = "KJna"
-            description = "TOOD"
-            tags.set(listOf())
+            description = "Generates multiplatform Kotlin code for common-module access to native libraries."
+            tags.set(listOf("kmp", "multiplatform", "binding", "jextract", "cinterop", "kotlin-native"))
             implementationClass = "dev.toastbits.kjna.plugin.KJnaPlugin"
         }
     }
@@ -26,7 +26,7 @@ gradlePlugin {
 
 repositories {
     mavenLocal()
-    maven("https://jitpack.io")
+    mavenCentral()
     gradlePluginPortal()
 }
 
@@ -41,11 +41,6 @@ dependencies {
 
 publishing {
     repositories {
-        // publications {
-        //     create<MavenPublication>("kjna") {
-        //         from(components["java"])
-        //     }
-        // }
         mavenLocal()
     }
 }
@@ -54,13 +49,6 @@ java {
     withSourcesJar()
     withJavadocJar()
 }
-
-// signing {
-//     useInMemoryPgpKeys(
-//         providers.gradleProperty("signingKey").orNull,
-//         providers.gradleProperty("signingPassword").orNull
-//     )
-// }
 
 tasks.withType<DokkaTaskPartial>().configureEach {
     moduleName.set("KJna Gradle Plugin")

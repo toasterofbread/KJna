@@ -6,6 +6,7 @@ import org.jetbrains.dokka.gradle.DokkaTaskPartial
 plugins {
     kotlin("jvm").apply(false)
     id("dev.toastbits.kjna").apply(false)
+    id("com.vanniktech.maven.publish").apply(false)
 
     id("org.jetbrains.dokka")
 }

@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 
 class KJnaConfiguration(
@@ -16,7 +17,13 @@ class KJnaConfiguration(
     fun generate(configure: KJnaGenerateConfiguration.() -> Unit) {
         configure(KJnaGenerateConfiguration(this))
 
-        kotlin.targets.withType(KotlinJvmTarget::class.java).all { it.withJava() }
+        kotlin.targets.withType(KotlinJvmTarget::class.java).all { task ->
+            task.withJava()
+        }
+
+        project.tasks.withType(KotlinCompile::class.java).all { task ->
+            task.dependsOn(generate_task)
+        }
 
         project.afterEvaluate {
             kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(generate_task.common_output_dir)

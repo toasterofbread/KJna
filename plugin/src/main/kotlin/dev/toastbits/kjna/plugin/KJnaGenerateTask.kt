@@ -63,7 +63,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
     internal val jextractGenerate: KJnaJextractGenerateTask = project.tasks.register(KJnaJextractGenerateTask.NAME, KJnaJextractGenerateTask::class.java).get()
 
     init {
-        description = "TODO"
+        description = "Generate binding files for the configured packages and targets"
 
         project.afterEvaluate {
             if (build_targets.contains(KJnaBuildTarget.NATIVE)) {

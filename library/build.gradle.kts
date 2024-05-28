@@ -4,6 +4,7 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.strumenta.antlrkotlin.gradle.AntlrKotlinTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jetbrains.dokka.gradle.DokkaTaskPartial
+import org.jetbrains.dokka.gradle.AbstractDokkaLeafTask
 
 plugins {
     kotlin("multiplatform")
@@ -68,8 +69,8 @@ mavenPublishing {
     ))
 
     pom {
-        name.set("KJna library")
-        description.set("TODO")
+        name.set("KJna Library")
+        description.set("Classes for binding file generation used by the KJna Gradle plugin")
         url.set("https:/github.com/toasterofbread/KJna")
         inceptionYear.set("2024")
 
@@ -100,6 +101,8 @@ mavenPublishing {
 
 tasks.withType<DokkaTaskPartial>().configureEach {
     moduleName.set("KJna Library")
+}
 
+tasks.withType<AbstractDokkaLeafTask>().configureEach {
     dependsOn("generateKotlinGrammarSource")
 }
