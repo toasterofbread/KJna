@@ -107,6 +107,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                 if (actual_type.type is CType.Struct) {
                     val native_type_alias: String = context.importNativeStruct(actual_type.type)
                     context.importFromCoordinates("kotlinx.cinterop.CPointer")
+                    context.addContainerAnnotation("@file:Suppress(\"UNCHECKED_CAST\")")
                     append(" as CPointer<$native_type_alias>")
                     if (param_type.last() == '?') {
                         append('?')
@@ -242,7 +243,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
 
         append("companion object: ")
         append(context.importRuntimeType(RuntimeType.KJnaAllocationCompanion))
-        appendLine("<$T>($T::class) {")
+        appendLine("<$T>() {")
 
         appendLine(
             buildString {
@@ -439,6 +440,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                             append("?.pointer")
                             if (internal_type != null) {
                                 context.importFromCoordinates("kotlinx.cinterop.CPointer")
+                                context.addContainerAnnotation("@file:Suppress(\"UNCHECKED_CAST\")")
                                 append(" as CPointer<$internal_type>")
                             }
                         }

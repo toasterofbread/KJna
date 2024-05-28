@@ -2,8 +2,7 @@ package dev.toastbits.kjna.runtime
 
 import kotlin.reflect.KClass
 
-expect abstract class KJnaAllocationCompanion<T: Any> {
-    val user_class: KClass<T>
+expect abstract class KJnaAllocationCompanion<T: Any>() {
     abstract fun allocate(scope: KJnaMemScope): KJnaTypedPointer<T>
     abstract fun construct(from: KJnaPointer): T
     abstract fun set(value: T, pointer: KJnaTypedPointer<T>)

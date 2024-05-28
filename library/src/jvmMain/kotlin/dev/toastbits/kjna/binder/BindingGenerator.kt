@@ -17,12 +17,19 @@ class BindingGenerator(
     fun buildKotlinFile(target: KJnaBinderTarget, pkg: String, buildContent: StringBuilderGenerationScope.() -> Unit) {
         val imports: MutableList<Pair<String, String?>> = mutableListOf()
         val unions: MutableMap<String, String> = mutableMapOf()
+        val annotations: MutableList<String> = mutableListOf()
 
         val scope: StringBuilderGenerationScope =
-            object : StringBuilderGenerationScope(target, imports, unions) {
+            object : StringBuilderGenerationScope(target, imports, unions, annotations) {
                 override fun build(): String {
                     val content: String = this.toString()
                     return buildString {
+                        if (annotations.isNotEmpty()) {
+                            for (annotation in annotations) {
+                                append(annotation)
+                            }
+                            appendLine()
+                        }
                         appendLine("package $pkg")
 
                         appendLine()
@@ -48,8 +55,9 @@ class BindingGenerator(
     inner abstract class StringBuilderGenerationScope(
         target: KJnaBinderTarget,
         imports: MutableList<Pair<String, String?>>,
-        unions: MutableMap<String, String>
-    ): GenerationScope(target, imports, unions) {
+        unions: MutableMap<String, String>,
+        annotations: MutableList<String>
+    ): GenerationScope(target, imports, unions, annotations) {
         private val string: StringBuilder = StringBuilder()
 
         override fun toString(): String = string.toString()
@@ -64,7 +72,8 @@ class BindingGenerator(
     inner open class GenerationScope(
         val target: KJnaBinderTarget,
         private val imports: MutableList<Pair<String, String?>>,
-        private val unions: MutableMap<String, String>
+        private val unions: MutableMap<String, String>,
+        private val annotations: MutableList<String>
     ) {
         val binder: KJnaBinder get() = this@BindingGenerator.binder
 
@@ -73,6 +82,12 @@ class BindingGenerator(
 
             if (imports.none { it.first == coordinates }) {
                 imports.add(Pair(coordinates, alias))
+            }
+        }
+
+        fun addContainerAnnotation(annotation: String) {
+            if (!annotations.contains(annotation)) {
+                annotations.add(annotation)
             }
         }
 

@@ -29,7 +29,7 @@ import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.CPointer
 
-actual abstract class KJnaAllocationCompanion<T: Any>(actual val user_class: KClass<T>) {
+actual abstract class KJnaAllocationCompanion<T: Any> {
     actual abstract fun allocate(scope: KJnaMemScope): KJnaTypedPointer<T>
     actual abstract fun construct(from: KJnaPointer): T
     actual abstract fun set(value: T, pointer: KJnaTypedPointer<T>)
@@ -42,7 +42,7 @@ actual abstract class KJnaAllocationCompanion<T: Any>(actual val user_class: KCl
 
             @Suppress("UNCHECKED_CAST")
             return primitive_allocation_companions.getOrPut(T::class) {
-                object : KJnaAllocationCompanion<T>(T::class) {
+                object : KJnaAllocationCompanion<T>() {
                     override fun allocate(scope: KJnaMemScope): KJnaTypedPointer<T> = with (scope.native_scope) {
                         val value: CPointed =
                             when (T::class) {
