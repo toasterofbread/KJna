@@ -12,5 +12,6 @@ open class RuntimeType(
         val native_scope: String = "native_scope"
     }
     object KJnaAllocationCompanion: RuntimeType("KJnaAllocationCompanion", "dev.toastbits.kjna.runtime.KJnaAllocationCompanion")
+    object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")
     object pointedAs: RuntimeType("pointedAs", "dev.toastbits.kjna.runtime.pointedAs")
 }

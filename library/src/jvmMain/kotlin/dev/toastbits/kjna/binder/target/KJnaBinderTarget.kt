@@ -18,6 +18,7 @@ sealed interface KJnaBinderTarget {
     fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String
     fun implementStructToStringMethod(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = null
     fun implementStructCompanionObject(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = null
+    fun implementStructAnnotation(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = null
 
     fun implementUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String?
     fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String

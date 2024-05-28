@@ -7,6 +7,11 @@ import withIndex
 
 fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, target: KJnaBinderTarget): String =
     buildString {
+        val struct_annotation: String? = target.implementStructAnnotation(struct, this@generateStructBody)
+        if (struct_annotation != null) {
+            appendLine(struct_annotation)
+        }
+
         for (modifier in target.getClassModifiers()) {
             append(modifier)
             append(' ')

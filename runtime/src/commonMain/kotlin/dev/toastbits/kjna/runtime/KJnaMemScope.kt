@@ -1,6 +1,6 @@
 package dev.toastbits.kjna.runtime
 
-expect class KJnaMemScope {
+expect class KJnaMemScope() {
     fun close()
 
     inline fun <reified T: Any> alloc(): KJnaTypedPointer<T>

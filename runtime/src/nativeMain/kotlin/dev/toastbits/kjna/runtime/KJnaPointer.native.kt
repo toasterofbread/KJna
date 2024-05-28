@@ -6,7 +6,7 @@ actual open class KJnaPointer(var pointer: CPointer<*>) {
     actual inline fun <reified T: Any> cast(): T {
         try {
             val allocation_companion: KJnaAllocationCompanion<T> =
-                KJnaMemScope.getAllocationCompanion(T::class) ?: KJnaAllocationCompanion.ofPrimitive()
+                KJnaNativeStruct.getAllocationCompanionOf<T>() ?: KJnaAllocationCompanion.ofPrimitive()
 
             return allocation_companion.construct(this)
         }
@@ -24,7 +24,7 @@ actual abstract class KJnaTypedPointer<T>(pointer: CPointer<*>): KJnaPointer(poi
         inline fun <reified T: Any> ofNativeObject(
             pointer: CPointer<*>,
             allocation_companion: KJnaAllocationCompanion<T> =
-                KJnaMemScope.getAllocationCompanion(T::class) ?: throw RuntimeException(T::class.toString())
+                KJnaNativeStruct.getAllocationCompanionOf<T>() ?: throw RuntimeException(T::class.toString())
         ) = object : KJnaTypedPointer<T>(pointer) {
                 override fun get(): T {
                     return allocation_companion.construct(this)

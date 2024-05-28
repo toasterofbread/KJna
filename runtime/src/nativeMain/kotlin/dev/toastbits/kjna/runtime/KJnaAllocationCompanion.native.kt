@@ -1,6 +1,11 @@
 package dev.toastbits.kjna.runtime
 
 import kotlin.reflect.KClass
+import kotlin.reflect.findAssociatedObject
+import kotlin.reflect.AssociatedObjectKey
+import kotlin.reflect.ExperimentalAssociatedObjects
+import kotlin.annotation.Target
+import kotlin.annotation.AnnotationTarget
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.CPointed
@@ -35,6 +40,7 @@ actual abstract class KJnaAllocationCompanion<T: Any>(actual val user_class: KCl
         actual inline fun <reified T: Any> ofPrimitive(): KJnaAllocationCompanion<T> {
             require(T::class != String::class) { "String is not a primitive" }
 
+            @Suppress("UNCHECKED_CAST")
             return primitive_allocation_companions.getOrPut(T::class) {
                 object : KJnaAllocationCompanion<T>(T::class) {
                     override fun allocate(scope: KJnaMemScope): KJnaTypedPointer<T> = with (scope.native_scope) {
@@ -111,3 +117,14 @@ actual abstract class KJnaAllocationCompanion<T: Any>(actual val user_class: KCl
 @OptIn(ExperimentalForeignApi::class)
 inline fun <reified T: CPointed> CPointer<*>.pointedAs(): T =
     this.reinterpret<T>().pointed
+
+@OptIn(ExperimentalAssociatedObjects::class)
+@Target(AnnotationTarget.CLASS)
+@AssociatedObjectKey
+annotation class KJnaNativeStruct(val allocation_companion: KClass<out KJnaAllocationCompanion<*>>) {
+    companion object {
+        @Suppress("UNCHECKED_CAST")
+        inline fun <reified T: Any> getAllocationCompanionOf(): KJnaAllocationCompanion<T>? =
+            T::class.findAssociatedObject<KJnaNativeStruct>() as KJnaAllocationCompanion<T>?
+    }
+}

@@ -18,7 +18,7 @@ actual class KJnaMemScope {
         require(T::class != String::class) { "String cannot be allocated directly" }
 
         val allocate_companion: KJnaAllocationCompanion<T> =
-            getAllocationCompanion(T::class) ?: KJnaAllocationCompanion.ofPrimitive()
+            KJnaNativeStruct.getAllocationCompanionOf<T>() ?: KJnaAllocationCompanion.ofPrimitive()
 
         return allocate_companion.allocate(this)
     }
@@ -39,17 +39,6 @@ actual class KJnaMemScope {
             finally {
                 scope.close()
             }
-        }
-
-        private val allocation_companions: MutableMap<KClass<*>, KJnaAllocationCompanion<*>> = mutableMapOf()
-
-        @Suppress("UNCHECKED_CAST")
-        fun <T: Any> getAllocationCompanion(user_class: KClass<T>): KJnaAllocationCompanion<T>? {
-            return allocation_companions[user_class] as KJnaAllocationCompanion<T>?
-        }
-
-        fun registerAllocationCompanion(obj: KJnaAllocationCompanion<*>) {
-            allocation_companions[obj.user_class] = obj
         }
     }
 }

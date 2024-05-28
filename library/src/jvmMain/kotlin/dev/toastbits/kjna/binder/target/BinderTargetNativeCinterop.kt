@@ -170,22 +170,6 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
     private fun getNativeTypeAlias(name: String): String =
         "_native_" + name
 
-    override fun implementHeaderInitialiser(all_structs: List<CType.Struct>?, context: BindingGenerator.GenerationScope): String? {
-        if (all_structs == null) {
-            return null
-        }
-
-        return buildString {
-            val mem_scope: String = context.importRuntimeType(RuntimeType.KJnaMemScope)
-
-            appendLine("init {")
-            for (struct in all_structs.map { context.importStruct(it.name) }.sorted()) {
-                appendLine("    $mem_scope.registerAllocationCompanion($struct.Companion)")
-            }
-            append("}")
-        }
-    }
-
     override fun implementStructConstructor(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
         val native_type_alias: String = context.importNativeStruct(struct)
         context.importFromCoordinates("kotlinx.cinterop.ArenaBase")
@@ -300,6 +284,11 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
         )
 
         append("}")
+    }
+
+    override fun implementStructAnnotation(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
+        val native_struct: String = context.importRuntimeType(RuntimeType.KJnaNativeStruct)
+        return "@$native_struct(${struct.name}.Companion::class)"
     }
 
     override fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
