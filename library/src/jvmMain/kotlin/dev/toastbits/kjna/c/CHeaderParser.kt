@@ -33,7 +33,8 @@ class CHeaderParser(include_dirs: List<String>? = null) {
     fun getAllTypedefsMap(): Map<String, CTypeDef> = getAllTypedefs().associate { it.name to it }
     fun getAllFunctions(): List<CFunctionDeclaration> = getAllHeaders().flatMap { it.functions }
 
-    fun parse(headers: List<String>, package_scope: PackageGenerationScope) {
+    fun parse(headers: List<String>) {
+        val package_scope: PackageGenerationScope = PackageGenerationScope()
         val all_headers: MutableList<String> = headers.distinct().toMutableList()
 
         var included_headers: List<String> = parseIncludedFiles(headers)
@@ -56,7 +57,9 @@ class CHeaderParser(include_dirs: List<String>? = null) {
 
             val lexer: CLexer = CLexer(input)
             val tokens: CommonTokenStream = CommonTokenStream(lexer)
+
             val parser: CParser = CParser(tokens)
+            parser.errorHandler = SilentErrorStrategy()
 
             val tree: CParser.TranslationUnitContext = parser.translationUnit()
 

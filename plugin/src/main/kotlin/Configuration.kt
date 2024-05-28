@@ -16,6 +16,8 @@ class KJnaConfiguration(
     fun generate(configure: KJnaGenerateConfiguration.() -> Unit) {
         configure(KJnaGenerateConfiguration(this))
 
+        kotlin.targets.withType(KotlinJvmTarget::class.java).all { it.withJava() }
+
         project.afterEvaluate {
             kotlin.sourceSets.getByName("commonMain").kotlin.srcDir(generate_task.common_output_dir)
             kotlin.sourceSets.getByName("jvmMain").kotlin.srcDir(generate_task.jvm_output_dir)
@@ -27,7 +29,7 @@ class KJnaConfiguration(
 class KJnaGenerateConfiguration(
     val config: KJnaConfiguration,
 ): KJnaGenerationConfig by config.generate_task {
-    fun packages(native_targets: List<KotlinNativeTarget>, configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
+    fun packages(native_targets: List<KotlinNativeTarget> = emptyList(), configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
         val packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration().also { configure(it) }
         this.packages = packages
 

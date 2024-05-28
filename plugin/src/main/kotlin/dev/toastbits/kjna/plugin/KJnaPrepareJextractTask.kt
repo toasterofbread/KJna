@@ -26,7 +26,7 @@ open class KJnaPrepareJextractTask: DefaultTask() {
 
     @OutputDirectory
     @Optional
-    var jextract_archive_extract_directory: File = project.layout.buildDirectory.file("jextract").get().asFile
+    var jextract_archive_extract_directory: File = project.rootProject.layout.buildDirectory.file("jextract").get().asFile
 
     @OutputFile
     lateinit var final_jextract_binary: File

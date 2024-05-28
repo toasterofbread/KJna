@@ -7,6 +7,7 @@ include(":sample")
 
 pluginManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -20,6 +21,13 @@ pluginManagement {
 
         val antlr_kotlin_version: String = extra["antlrKotlin.version"] as String
         id("com.strumenta.antlr-kotlin").version(antlr_kotlin_version)
+
+        val dokka_version: String = extra["dokka.version"] as String
+        id("org.jetbrains.dokka").version(dokka_version)
+
+        // Plugin included for use in Sample
+        val kjna_version: String = extra["project.version"] as String
+        id("dev.toastbits.kjna").version(kjna_version)
     }
 }
 

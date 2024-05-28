@@ -10,3 +10,5 @@ local.properties
 xcuserdata
 .vscode
 .kotlin
+
+/sample/src/jvmMain/java

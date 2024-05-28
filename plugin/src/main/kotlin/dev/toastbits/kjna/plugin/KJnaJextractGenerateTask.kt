@@ -56,7 +56,7 @@ open class KJnaJextractGenerateTask: DefaultTask() {
 
         val result: Int = process.waitFor()
         if (result != 0) {
-            throw GradleException("Jextract failed ($result).\nExecutable: $binary\nArgs: $args")
+            throw GradleException("Jextract failed ($result).\nExecutable: $binary\nArgs: ${args.joinToString(" ")}")
         }
     }
 

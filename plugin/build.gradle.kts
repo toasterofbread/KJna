@@ -1,5 +1,8 @@
+import org.jetbrains.dokka.gradle.DokkaTaskPartial
+
 plugins {
     kotlin("jvm")
+    id("org.jetbrains.dokka")
     id("com.gradle.plugin-publish").version("1.2.1")
     signing
 }
@@ -58,3 +61,7 @@ java {
 //         providers.gradleProperty("signingPassword").orNull
 //     )
 // }
+
+tasks.withType<DokkaTaskPartial>().configureEach {
+    moduleName.set("KJna Gradle Plugin")
+}

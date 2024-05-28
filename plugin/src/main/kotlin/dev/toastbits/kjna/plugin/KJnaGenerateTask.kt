@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
-import dev.toastbits.kjna.c.PackageGenerationScope
 import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.target.BinderTargetShared
 import dev.toastbits.kjna.binder.target.BinderTargetJvmJextract
@@ -103,8 +102,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
 
         val parser: CHeaderParser = CHeaderParser(include_dirs)
         for (pkg in packages.packages) {
-            val scope: PackageGenerationScope = PackageGenerationScope()
-            parser.parse(pkg.headers.map { it.header_path }, scope)
+            parser.parse(pkg.headers.map { it.header_path })
         }
 
         val bindings: List<KJnaBinder.GeneratedBindings> =

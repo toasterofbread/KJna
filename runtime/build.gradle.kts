@@ -1,14 +1,17 @@
 import com.vanniktech.maven.publish.SonatypeHost
 import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinMultiplatform
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
     kotlin("multiplatform")
+    id("org.jetbrains.dokka")
     id("com.vanniktech.maven.publish")
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(22)
 
     jvm()
     linuxX64()
@@ -40,6 +43,11 @@ mavenPublishing {
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
 
+    configure(KotlinMultiplatform(
+        javadocJar = JavadocJar.Dokka("dokkaHtml"),
+        sourcesJar = true
+    ))
+
     pom {
         name.set("KJna runtime")
         description.set("TODO")
@@ -69,4 +77,8 @@ mavenPublishing {
             url.set("https://github.com/toasterofbread/KJna/issues")
         }
     }
+}
+
+tasks.withType<DokkaTaskPartial>().configureEach {
+    moduleName.set("KJna Runtime")
 }
