@@ -14,11 +14,12 @@ import java.nio.file.Paths
 class CHeaderParser(include_dirs: List<String>? = null) {
     data class HeaderInfo(
         val absolute_path: String,
-        val typedefs: List<CTypeDef>,
-        val functions: List<CFunctionDeclaration>
+        val functions: List<CFunctionDeclaration>,
+        val structs: List<CType.Struct>,
+        val typedefs: List<CTypeDef>
     ) {
         override fun toString(): String =
-            "HeaderInfo(absolute_path=$absolute_path, typedefs: ${typedefs.size}, functions: ${functions.size})"
+            "HeaderInfo(absolute_path=$absolute_path, functions: ${functions.size}), structs: ${structs.size}, typedefs: ${typedefs.size}"
     }
 
     private val parsed_headers: MutableMap<String, HeaderInfo> = mutableMapOf()
@@ -43,6 +44,7 @@ class CHeaderParser(include_dirs: List<String>? = null) {
 
         for (header in all_headers) {
             val functions: MutableList<CFunctionDeclaration> = mutableListOf()
+            val structs: MutableList<CType.Struct> = mutableListOf()
             val typedefs: MutableList<CTypeDef> = mutableListOf()
 
             val file: File = getHeaderFile(header)
@@ -68,11 +70,16 @@ class CHeaderParser(include_dirs: List<String>? = null) {
                 val typedef: CTypeDef? = with (package_scope) { parseTypedefDeclaration(declaration) }
                 if (typedef != null) {
                     typedefs.add(typedef)
+
+                    if (typedef.type.type is CType.Struct) {
+                        structs.add(typedef.type.type)
+                    }
+
                     continue
                 }
             }
 
-            parsed_headers[header] = HeaderInfo(file.absolutePath, typedefs, functions)
+            parsed_headers[header] = HeaderInfo(file.absolutePath, functions, structs, typedefs)
         }
     }
 

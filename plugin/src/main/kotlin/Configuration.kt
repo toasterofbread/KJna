@@ -46,7 +46,7 @@ class KJnaGenerateConfiguration(
     }
 }
 
-@Suppress("INVISIBLE_MEMBER") // For KotlinMultiplatformExtension.project
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE") // For KotlinMultiplatformExtension.project
 fun KotlinMultiplatformExtension.kjna(configure: KJnaConfiguration.() -> Unit) {
     val generate_task: KJnaGenerateTask = project.tasks.getByName(KJnaGenerateTask.NAME) as KJnaGenerateTask
     configure(KJnaConfiguration(project, generate_task, this))

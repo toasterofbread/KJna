@@ -29,7 +29,11 @@ sealed interface CType {
 
     data class Enum(val name: String, val values: Map<String, Int>): CType
 
-    data class Function(val shape: CFunctionDeclaration): CType
+    data class Function(val shape: CFunctionDeclaration, val data_send_param: Int? = null, val data_recv_param: Int? = null): CType {
+        companion object {
+            val FUNCTION_DATA_PARAM_TYPE: CValueType = CValueType(CType.Primitive.VOID, 1)
+        }
+    }
 }
 
 fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>): CType {

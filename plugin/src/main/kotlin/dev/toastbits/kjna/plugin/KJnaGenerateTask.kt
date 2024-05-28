@@ -14,10 +14,11 @@ import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
 import dev.toastbits.kjna.c.PackageGenerationScope
 import dev.toastbits.kjna.binder.KJnaBinder
-import dev.toastbits.kjna.binder.KJnaBinderTarget
-import dev.toastbits.kjna.binder.BinderTargetShared
-import dev.toastbits.kjna.binder.BinderTargetJvmJextract
-import dev.toastbits.kjna.binder.BinderTargetNativeCinterop
+import dev.toastbits.kjna.binder.target.BinderTargetShared
+import dev.toastbits.kjna.binder.target.BinderTargetJvmJextract
+import dev.toastbits.kjna.binder.target.BinderTargetNativeCinterop
+import dev.toastbits.kjna.binder.target.BinderTargetDisabled
+import dev.toastbits.kjna.binder.target.KJnaBinderTarget
 import javax.inject.Inject
 
 abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
@@ -105,7 +106,20 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                     }
 
                 val binder: KJnaBinder = KJnaBinder(pkg.package_name, header_bindings, parser.getAllTypedefsMap())
-                return@map binder.generateBindings(bind_targets)
+
+                if (pkg.enabled) {
+                    return@map binder.generateBindings(bind_targets)
+                }
+
+                val targets: List<KJnaBinderTarget> = bind_targets.map { if (it is BinderTargetShared) it else KJnaBinderTarget.DISABLED }.distinct()
+                val result: KJnaBinder.GeneratedBindings = binder.generateBindings(targets)
+
+                return@map result.copy(
+                    files = bind_targets.associateWith { target ->
+                        if (target is BinderTargetShared) result.files[target]!!
+                        else result.files[KJnaBinderTarget.DISABLED]!!
+                    }
+                )
             }
 
         for (target in bind_targets) {
@@ -114,6 +128,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                     is BinderTargetShared -> common_output_dir
                     is BinderTargetJvmJextract -> jvm_output_dir
                     is BinderTargetNativeCinterop -> native_output_dir
+                    is BinderTargetDisabled -> throw IllegalStateException()
                 }
 
             if (target_directory.exists()) {

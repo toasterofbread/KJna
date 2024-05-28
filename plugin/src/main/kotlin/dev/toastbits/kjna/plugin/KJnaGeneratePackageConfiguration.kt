@@ -5,7 +5,7 @@ import java.io.File
 import dev.toastbits.kjna.c.CHeaderParser
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
-import dev.toastbits.kjna.binder.BinderTargetNativeCinterop
+import dev.toastbits.kjna.binder.target.BinderTargetNativeCinterop
 
 data class KJnaGeneratePackagesConfiguration(
     var packages: List<Package> = emptyList()
@@ -16,6 +16,7 @@ data class KJnaGeneratePackagesConfiguration(
 
     data class Package(
         var package_name: String,
+        var enabled: Boolean = true,
         var headers: List<KJnaGeneratePackageHeaderConfiguration> = emptyList(),
         var libraries: List<String> = emptyList(),
         var jvm_output_directory: File? = null

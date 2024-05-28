@@ -3,7 +3,7 @@ package dev.toastbits.kjna.runtime
 import java.lang.foreign.MemorySegment
 
 actual open class KJnaPointer(val pointer: MemorySegment) {
-    // actual inline fun <reified T: Any> cast(): T = TODO()
+    actual inline fun <reified T: Any> cast(): T = TODO()
 }
 
 actual abstract class KJnaTypedPointer<T>(pointer: MemorySegment): KJnaPointer(pointer) {

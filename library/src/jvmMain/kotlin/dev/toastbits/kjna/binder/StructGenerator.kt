@@ -2,6 +2,7 @@ package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
+import dev.toastbits.kjna.binder.target.KJnaBinderTarget
 import withIndex
 
 fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, target: KJnaBinderTarget): String =
@@ -13,13 +14,15 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
         append("class ")
         append(struct.name)
 
-        val struct_constructor: String? = target.implementKotlinStructConstructor(struct, this@generateStructBody)
+        val struct_constructor: String? = target.implementStructConstructor(struct, this@generateStructBody)
         if (struct_constructor != null) {
             append(' ')
             append(struct_constructor)
         }
 
-        if (struct.definition.fields.isNotEmpty()) {
+        val companion_object: String? = target.implementStructCompanionObject(struct, this@generateStructBody)
+
+        if (struct.definition.fields.isNotEmpty() || companion_object != null) {
             appendLine(" {")
 
             for ((index, name, type) in struct.definition.fields.withIndex()) {
@@ -27,12 +30,22 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
                 if (type_name == null) {
                     throw NullPointerException(struct.toString())
                 }
-                appendLine(target.implementKotlinStructField(name, index, type, type_name, struct, this@generateStructBody).prependIndent("    "))
+                appendLine(target.implementStructField(name, index, type, type_name, struct, this@generateStructBody).prependIndent("    "))
             }
 
-            val companion_object: String? = target.getStructCompanionObject(struct, this@generateStructBody)
+            val to_string: String? = target.implementStructToStringMethod(struct, this@generateStructBody)
+            if (to_string != null) {
+                if (struct.definition.fields.isNotEmpty()) {
+                    appendLine()
+                }
+                appendLine(to_string.prependIndent("    "))
+            }
+
             if (companion_object != null) {
-                appendLine()
+                if (struct.definition.fields.isNotEmpty() || to_string != null) {
+                    appendLine()
+                }
+
                 appendLine(companion_object.prependIndent("    "))
             }
 

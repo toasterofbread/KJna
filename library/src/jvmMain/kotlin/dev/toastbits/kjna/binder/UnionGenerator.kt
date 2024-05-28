@@ -1,6 +1,7 @@
 package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CType
+import dev.toastbits.kjna.binder.target.KJnaBinderTarget
 import withIndex
 
 fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Union, target: KJnaBinderTarget): String =
@@ -12,7 +13,7 @@ fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Un
         append("class ")
         append(name)
 
-        val union_constructor: String? = target.implementKotlinUnionConstructor(union, name, this@generateUnion)
+        val union_constructor: String? = target.implementUnionConstructor(union, name, this@generateUnion)
         if (union_constructor != null) {
             append(' ')
             append(union_constructor)
@@ -26,7 +27,7 @@ fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Un
                 if (type_name == null) {
                     throw NullPointerException(union.toString())
                 }
-                appendLine(target.implementKotlinUnionField(field, index, type, type_name, union, name, this@generateUnion).prependIndent("    "))
+                appendLine(target.implementUnionField(field, index, type, type_name, union, name, this@generateUnion).prependIndent("    "))
             }
 
             append("}")

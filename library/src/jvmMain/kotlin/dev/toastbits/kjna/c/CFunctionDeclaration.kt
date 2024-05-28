@@ -9,6 +9,57 @@ data class CFunctionDeclaration(
     val parameters: List<CFunctionParameter> = emptyList()
 )
 
+private fun PackageGenerationScope.parseFunctionParameters(parameters: List<CParser.ParameterDeclarationContext>): List<CFunctionParameter> {
+    val function_params: MutableList<CFunctionParameter> = parameters.map { parseFunctionParameter(it) }.toMutableList()
+
+    val i: MutableListIterator<CFunctionParameter> = function_params.listIterator()
+    while (i.hasNext()) {
+        val param: CFunctionParameter = i.next()
+        if (param.type.type !is CType.Function) {
+            continue
+        }
+
+        if (param.type.pointer_depth != 1) {
+            i.remove()
+            continue
+        }
+
+        val next: CFunctionParameter? = function_params.getOrNull(i.nextIndex())
+        if (next?.type != CType.Function.FUNCTION_DATA_PARAM_TYPE) {
+            i.remove()
+            continue
+        }
+
+        val func: CType.Function = param.type.type
+        if (func.shape.parameters.size != 1) {
+            i.remove()
+            continue
+        }
+
+        if (func.shape.parameters.single().type != CType.Function.FUNCTION_DATA_PARAM_TYPE) {
+            i.remove()
+            continue
+        }
+
+        i.set(param.copy(
+            type = param.type.copy(
+                type = func.copy(
+                    data_send_param = i.nextIndex(),
+                    data_recv_param = 0,
+                    shape = func.shape.copy(parameters = emptyList())
+                )
+            )
+        ))
+    }
+
+    check(function_params.all { param ->
+        if (param.type.type is CType.Function) param.type.type.data_send_param != null && param.type.type.data_recv_param != null
+        else true
+    })
+
+    return function_params
+}
+
 private fun PackageGenerationScope.parseFunctionParameter(param: CParser.ParameterDeclarationContext): CFunctionParameter {
     val param_declarator: CParser.DeclaratorContext = param.declarator() ?: return CFunctionParameter(null, CValueType(CType.Primitive.VOID, 0))
     val direct_declarator: CParser.DirectDeclaratorContext = param_declarator.directDeclarator()
@@ -19,12 +70,12 @@ private fun PackageGenerationScope.parseFunctionParameter(param: CParser.Paramet
 
     val type_pointer_depth: Int = param_declarator.pointer()?.Star()?.size ?: 0
 
-    val callback_declarator: CParser.DeclaratorContext? = direct_declarator.directDeclarator()?.declarator()
-    if (callback_declarator != null) {
-        val param_name: String? = callback_declarator.directDeclarator().Identifier()?.text
-        val pointer_depth: Int = callback_declarator.pointer()?.Star()?.size ?: 0
+    val function_declarator: CParser.DeclaratorContext? = direct_declarator.directDeclarator()?.declarator()
+    if (function_declarator != null) {
+        val param_name: String? = function_declarator.directDeclarator().Identifier()?.text
+        val pointer_depth: Int = function_declarator.pointer()?.Star()?.size ?: 0
 
-        val callback_params: List<CFunctionParameter> = direct_declarator.parameterTypeList()?.parameterList()?.parameterDeclaration()?.map { parseFunctionParameter(it) } ?: throw RuntimeException(param.text)
+        val function_params: List<CFunctionParameter> = direct_declarator.parameterTypeList()?.parameterList()?.parameterDeclaration()?.let { parseFunctionParameters(it) } ?: throw RuntimeException(param.text)
 
         return CFunctionParameter(
             name = param_name,
@@ -33,7 +84,7 @@ private fun PackageGenerationScope.parseFunctionParameter(param: CParser.Paramet
                     CFunctionDeclaration(
                         name = param_name ?: "",
                         return_type = CValueType(type, type_pointer_depth),
-                        parameters = callback_params
+                        parameters = function_params
                     )
                 ),
                 pointer_depth = pointer_depth
@@ -64,7 +115,7 @@ fun PackageGenerationScope.parseFunctionDeclaration(external_declaration: CParse
         val declarator_parameters: List<CParser.ParameterDeclarationContext> =
             declarator.directDeclarator().parameterTypeList()?.parameterList()?.parameterDeclaration() ?: return null
 
-        val parameters: List<CFunctionParameter> = declarator_parameters.map { parseFunctionParameter(it) }
+        val parameters: List<CFunctionParameter> = declarator_parameters.let { parseFunctionParameters(it) }
 
         return CFunctionDeclaration(
             name = name,

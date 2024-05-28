@@ -2,6 +2,9 @@ package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.*
 import dev.toastbits.kjna.runtime.RuntimeType
+import dev.toastbits.kjna.binder.target.KJnaBinderTarget
+import dev.toastbits.kjna.binder.target.BinderTargetDisabled
+import dev.toastbits.kjna.binder.target.BinderTargetShared
 import kotlin.reflect.KClass
 import kotlin.contracts.contract
 import kotlin.contracts.InvocationKind
@@ -28,8 +31,12 @@ class BindingGenerator(
                         append(content)
 
                         appendLine()
-                        for ((union, content) in unions) {
-                            appendLine(content)
+
+                        if (unions.isNotEmpty()) {
+                            appendLine()
+                            for ((_, union_content) in unions) {
+                                appendLine(union_content)
+                            }
                         }
                     }
                 }
@@ -62,7 +69,11 @@ class BindingGenerator(
         val binder: KJnaBinder get() = this@BindingGenerator.binder
 
         fun importFromCoordinates(coordinates: String, alias: String? = null) {
-            imports.add(Pair(coordinates, alias))
+            check(!coordinates.contains(" ")) { coordinates }
+
+            if (imports.none { it.first == coordinates }) {
+                imports.add(Pair(coordinates, alias))
+            }
         }
 
         fun getFunctionParameterName(name: String?, index: Int, used_names: List<String>): String {
@@ -80,23 +91,56 @@ class BindingGenerator(
             return base + (index + offset).toString()
         }
 
-        fun generateHeaderFileContent(header: KJnaBinder.Header): String =
+        fun generateHeaderFileContent(header: KJnaBinder.Header, all_structs: List<CType.Struct>?): String =
             buildString {
-                for (modifier in target.getClassModifiers()) {
+                val class_modifiers: List<String> = target.getClassModifiers()
+                for (modifier in class_modifiers) {
                     append(modifier)
-                    append(" ")
+                    append(' ')
                 }
-                appendLine("object ${header.class_name} {")
+
+                val header_constructor: String = target.implementHeaderConstructor(this@GenerationScope) ?: ""
+                appendLine("class ${header.class_name}$header_constructor {")
+
+                val initialiser: String? = target.implementHeaderInitialiser(all_structs, this@GenerationScope)
+                if (initialiser != null) {
+                    appendLine(initialiser.prependIndent("    "))
+                    appendLine()
+                }
 
                 for (function in header.info.functions) {
                     try {
-                        val header: String = getKotlinFunctionHeader(function)
-                        appendLine(target.implementKotlinFunction(function, header, this@GenerationScope).prependIndent("    "))
+                        val function_header: String = getKotlinFunctionHeader(function)
+                        appendLine(target.implementFunction(function, function_header, this@GenerationScope).prependIndent("    "))
                     }
                     catch (e: Throwable) {
                         throw RuntimeException("Generating function $function in $header failed", e)
                     }
                 }
+
+                appendLine(
+                    buildString {
+                        appendLine()
+
+                        for (modifier in class_modifiers) {
+                            if (modifier == "expect") {
+                                continue
+                            }
+                            append(modifier)
+                            append(' ')
+                        }
+                        appendLine("companion object {")
+
+                        appendLine(
+                            when (target) {
+                                is BinderTargetShared -> "fun isAvailable(): Boolean"
+                                is BinderTargetDisabled -> "actual fun isAvailable(): Boolean = false"
+                                else -> "actual fun isAvailable(): Boolean = true"
+                            }.prependIndent("    ")
+                        )
+                        append("}")
+                    }.prependIndent("    ")
+                )
 
                 append("}")
             }
@@ -105,13 +149,22 @@ class BindingGenerator(
             val header: StringBuilder = StringBuilder("fun ${function.name}(")
 
             val used_param_names: MutableList<String> = mutableListOf()
-            for ((index, param) in function.parameters.withIndex()) {
+            val function_data_param_indices: List<Int> = function.parameters.mapNotNull { param ->
+                if (param.type.type is CType.Function) {
+                    return@mapNotNull param.type.type.data_send_param
+                }
+                return@mapNotNull null
+            }
+
+            val params: List<CFunctionParameter> = function.parameters.filterIndexed { index, _ -> !function_data_param_indices.contains(index) }
+
+            for ((index, param) in params.withIndex()) {
                 val param_name: String = getFunctionParameterName(param.name, index, used_param_names)
                 used_param_names.add(param_name)
 
                 val param_type: String? = param.type.toKotlinTypeName(false) { createUnion(function.name, index, it) }
                 if (param_type == null) {
-                    if (function.parameters.size == 1) {
+                    if (params.size == 1) {
                         break
                     }
 
@@ -122,7 +175,7 @@ class BindingGenerator(
                 header.append(": ")
                 header.append(param_type)
 
-                if (index + 1 != function.parameters.size) {
+                if (index + 1 != params.size) {
                     header.append(", ")
                 }
             }
@@ -150,8 +203,20 @@ class BindingGenerator(
                 return "Unit"
             }
 
+            val actual_type: CValueType =
+                if (type is CType.TypeDef) type.resolve(binder.typedefs).let { it.copy(pointer_depth = pointer_depth + it.pointer_depth) }
+                else this
+
             var (type: String?, pointer_depth: Int) =
                 type.toKotlinType(pointer_depth, createUnion = createUnion)
+
+            if (actual_type.type is CType.Function) {
+                if (actual_type.pointer_depth != 1) {
+                    TODO(actual_type.toString())
+                }
+
+                return type!!
+            }
 
             if (type == null) {
                 if (is_return_type) {
@@ -163,7 +228,9 @@ class BindingGenerator(
                 }
             }
 
-            while (pointer_depth-- > 0) {
+            while (pointer_depth > 0) {
+                pointer_depth--
+
                 if (type == null) {
                     type = importRuntimeType(RuntimeType.KJnaPointer) + "?"
                 }
@@ -172,7 +239,11 @@ class BindingGenerator(
                 }
             }
 
-            check(pointer_depth <= 0)
+            if (type == "String") {
+                type = "String?"
+            }
+
+            check(pointer_depth == 0) { this }
             return type!!
         }
 
@@ -270,8 +341,9 @@ class BindingGenerator(
             return Pair(kotlin_type, pointer_depth)
         }
 
-        private fun importStruct(struct_name: String, alias: String? = null) {
+        fun importStruct(struct_name: String, alias: String? = null): String {
             importFromCoordinates(getStructImport(struct_name), alias)
+            return alias ?: struct_name
         }
 
         private fun importEnum(enum_name: String, alias: String? = null) {
@@ -291,9 +363,7 @@ class BindingGenerator(
         }
 
         fun importRuntimeType(type: RuntimeType): String {
-            if (imports.none { it.first == type.coordinates }) {
-                importFromCoordinates(type.coordinates, null)
-            }
+            importFromCoordinates(type.coordinates)
             return type.name
         }
     }

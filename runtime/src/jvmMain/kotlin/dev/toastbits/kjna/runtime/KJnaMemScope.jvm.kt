@@ -13,6 +13,10 @@ actual class KJnaMemScope {
         TODO()
     }
 
+    actual fun allocStringArray(values: Array<String?>): KJnaTypedPointer<String> {
+        TODO()
+    }
+
     actual companion object {
         actual inline fun <T> confined(action: KJnaMemScope.() -> T): T {
             val scope: KJnaMemScope = KJnaMemScope()

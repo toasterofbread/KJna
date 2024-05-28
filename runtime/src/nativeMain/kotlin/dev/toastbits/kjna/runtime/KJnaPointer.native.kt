@@ -3,7 +3,17 @@ package dev.toastbits.kjna.runtime
 import kotlinx.cinterop.CPointer
 
 actual open class KJnaPointer(var pointer: CPointer<*>) {
-    // actual inline fun <reified T: Any> cast(): T = TODO()
+    actual inline fun <reified T: Any> cast(): T {
+        try {
+            val allocation_companion: KJnaAllocationCompanion<T> =
+                KJnaMemScope.getAllocationCompanion(T::class) ?: KJnaAllocationCompanion.ofPrimitive()
+
+            return allocation_companion.construct(this)
+        }
+        catch (e: Throwable) {
+            throw RuntimeException("Casting $this to ${T::class} failed", e)
+        }
+    }
 }
 
 actual abstract class KJnaTypedPointer<T>(pointer: CPointer<*>): KJnaPointer(pointer) {

@@ -1,39 +1,43 @@
-package dev.toastbits.kjna.binder
+package dev.toastbits.kjna.binder.target
 
 import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
+import dev.toastbits.kjna.binder.BindingGenerator
 import withIndex
 
 class BinderTargetShared(): KJnaBinderTarget {
     override fun getClassModifiers(): List<String> = listOf("expect")
 
-    override fun implementKotlinFunction(function: CFunctionDeclaration, function_header: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementFunction(function: CFunctionDeclaration, function_header: String, context: BindingGenerator.GenerationScope): String {
         return function_header
     }
 
-    override fun implementKotlinStructConstructor(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
-        return null
+    override fun implementHeaderConstructor(context: BindingGenerator.GenerationScope): String {
+        return "()"
     }
 
-    override fun implementKotlinStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType =
             if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
             else type
 
+        val assignable: Boolean =
+            actual_type.type !is CType.Union && ((type.pointer_depth + actual_type.pointer_depth) > 0 || actual_type.type !is CType.Struct)
+
         val field_type: String =
-            if (actual_type.type is CType.Union) "val"
-            else "var"
+            if (assignable) "var"
+            else "val"
 
         return "$field_type $name: $type_name"
     }
 
-    override fun implementKotlinUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String? {
+    override fun implementUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String? {
         return null
     }
 
-    override fun implementKotlinUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType =
             if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
             else type
@@ -49,7 +53,7 @@ class BinderTargetShared(): KJnaBinderTarget {
         return ret
     }
 
-    override fun getEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
+    override fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
         buildString {
             append("enum class ")
             append(enm.name)
