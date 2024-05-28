@@ -4,7 +4,6 @@ import java.io.File
 import org.gradle.api.tasks.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
-import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
@@ -36,6 +35,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
     private val build_dir: File = project.layout.buildDirectory.dir("kjna").get().asFile
     override val common_output_dir: File = build_dir.resolve("src/common").apply { mkdirs() }
     override val jvm_output_dir: File = build_dir.resolve("src/jvm").apply { mkdirs() }
+    override val java_output_dir: File = project.file("src/jvmMain/java/kjna").apply { mkdirs() }
     override val native_output_dir: File = build_dir.resolve("src/native").apply { mkdirs() }
     override val native_def_output_dir: File = build_dir.resolve("def").apply { mkdirs() }
 
@@ -60,16 +60,29 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
     internal val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
     @get:Internal
     internal val prepareJextract: KJnaPrepareJextractTask = project.tasks.register(KJnaPrepareJextractTask.NAME, KJnaPrepareJextractTask::class.java).get()
+    @get:Internal
+    internal val jextractGenerate: KJnaJextractGenerateTask = project.tasks.register(KJnaJextractGenerateTask.NAME, KJnaJextractGenerateTask::class.java).get()
 
     init {
         description = "TODO"
 
         project.afterEvaluate {
-            configureNativeDefs.native_def_output_dir = native_def_output_dir
-            configureNativeDefs.packages = packages
+            if (build_targets.contains(KJnaBuildTarget.NATIVE)) {
+                configureNativeDefs.packages = packages
+                configureNativeDefs.include_dirs = include_dirs
+                configureNativeDefs.output_directory = native_def_output_dir
+                dependsOn(configureNativeDefs)
+            }
 
-            dependsOn(configureNativeDefs)
-            dependsOn(prepareJextract)
+            if (build_targets.contains(KJnaBuildTarget.JVM)) {
+                jextractGenerate.jextract_binary = prepareJextract.getFinalJextractBinaryFile()
+                jextractGenerate.packages = packages
+                jextractGenerate.include_dirs = include_dirs
+                jextractGenerate.output_directory = java_output_dir
+
+                jextractGenerate.dependsOn(prepareJextract)
+                dependsOn(jextractGenerate)
+            }
         }
     }
 
@@ -129,7 +142,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                     is BinderTargetJvmJextract -> jvm_output_dir
                     is BinderTargetNativeCinterop -> native_output_dir
                     is BinderTargetDisabled -> throw IllegalStateException()
-                }
+                }.resolve("kotlin")
 
             if (target_directory.exists()) {
                 target_directory.deleteRecursively()
@@ -145,18 +158,6 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                     file.writeText(content)
                 }
             }
-        }
-
-        // var jextract: File = prepareJextract.final_jextract_binary
-        // executeJextractCommand(jextract, listOf("--help"))
-    }
-
-    private fun executeJextractCommand(binary: File, args: List<String>) {
-        val process: Process = Runtime.getRuntime().exec((listOf(binary.absolutePath) + args).toTypedArray())
-
-        val result: Int = process.waitFor()
-        if (result != 0) {
-            throw GradleException("Jextract failed ($result).\nExecutable: $binary\nArgs: $args")
         }
     }
 

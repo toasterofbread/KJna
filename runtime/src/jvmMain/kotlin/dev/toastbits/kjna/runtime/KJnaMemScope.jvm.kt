@@ -3,18 +3,26 @@ package dev.toastbits.kjna.runtime
 import java.lang.foreign.Arena
 
 actual class KJnaMemScope {
-    private val arena: Arena = Arena.ofConfined()
+    val jvm_arena: Arena = Arena.ofConfined()
 
     actual fun close() {
-        arena.close()
+        jvm_arena.close()
     }
 
     actual inline fun <reified T: Any> alloc(): KJnaTypedPointer<T> {
-        TODO()
+        require(T::class != String::class) { "String cannot be allocated directly" }
+
+        val allocate_companion: KJnaAllocationCompanion<T> =
+            KJnaAllocationCompanion.getAllocationCompanionOf<T>() ?: KJnaAllocationCompanion.ofPrimitive()
+
+        return allocate_companion.allocate(this)
     }
 
     actual fun allocStringArray(values: Array<String?>): KJnaTypedPointer<String> {
-        TODO()
+        return object : KJnaTypedPointer<String>(values.memorySegment(jvm_arena)) {
+            override fun get(): String { throw UnsupportedOperationException() }
+            override fun set(value: String) { throw UnsupportedOperationException() }
+        }
     }
 
     actual companion object {

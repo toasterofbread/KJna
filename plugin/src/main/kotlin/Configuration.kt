@@ -28,8 +28,6 @@ class KJnaGenerateConfiguration(
     val config: KJnaConfiguration,
 ): KJnaGenerationConfig by config.generate_task {
     fun packages(native_targets: List<KotlinNativeTarget>, configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
-        val parser: CHeaderParser = CHeaderParser(include_dirs)
-
         val packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration().also { configure(it) }
         this.packages = packages
 
@@ -38,7 +36,7 @@ class KJnaGenerateConfiguration(
         for (pkg in packages.packages) {
             def_files.add(native_targets.map { target ->
                 val compilation: KotlinNativeCompilation = target.compilations.getByName(KotlinCompilation.MAIN_COMPILATION_NAME)
-                pkg.addToCompilation(compilation, parser, native_def_output_dir)
+                pkg.addToCompilation(compilation, native_def_output_dir)
             })
         }
 

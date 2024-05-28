@@ -5,12 +5,13 @@ import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
 import dev.toastbits.kjna.binder.BindingGenerator
+import dev.toastbits.kjna.binder.KJnaBinder
 import withIndex
 
 class BinderTargetShared(): KJnaBinderTarget {
     override fun getClassModifiers(): List<String> = listOf("expect")
 
-    override fun implementFunction(function: CFunctionDeclaration, function_header: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String {
         return function_header
     }
 
@@ -37,7 +38,7 @@ class BinderTargetShared(): KJnaBinderTarget {
         return null
     }
 
-    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType =
             if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
             else type

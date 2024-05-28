@@ -126,7 +126,7 @@ class BindingGenerator(
                 for (function in header.info.functions) {
                     try {
                         val function_header: String = getKotlinFunctionHeader(function)
-                        appendLine(target.implementFunction(function, function_header, this@GenerationScope).prependIndent("    "))
+                        appendLine(target.implementFunction(function, function_header, header, this@GenerationScope).prependIndent("    "))
                     }
                     catch (e: Throwable) {
                         throw RuntimeException("Generating function $function in $header failed", e)
@@ -177,7 +177,7 @@ class BindingGenerator(
                 val param_name: String = getFunctionParameterName(param.name, index, used_param_names)
                 used_param_names.add(param_name)
 
-                val param_type: String? = param.type.toKotlinTypeName(false) { createUnion(function.name, index, it) }
+                val param_type: String? = param.type.toKotlinTypeName(false) { createUnion(function.name, param_name, index, it) }
                 if (param_type == null) {
                     if (params.size == 1) {
                         break
@@ -197,12 +197,12 @@ class BindingGenerator(
 
             header.append(")")
 
-            val return_type: String = function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, it) }!!
+            val return_type: String = function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, null, it) }!!
             if (return_type != "Unit") {
                 header.append(": ")
                 header.append(return_type)
 
-                if (function.return_type?.type == CType.Primitive.CHAR) {
+                if (function.return_type?.type == CType.Primitive.CHAR && header.last() != '?') {
                     header.append('?')
                 }
             }
@@ -365,11 +365,11 @@ class BindingGenerator(
             importFromCoordinates(getEnumImport(enum_name), alias)
         }
 
-        fun createUnion(scope_name: String, parameter_index: Int?, union: CType.Union): String {
+        fun createUnion(scope_name: String, parameter_name: String?, parameter_index: Int?, union: CType.Union): String {
             val name: String = getUnion(scope_name, parameter_index)
             check(!unions.contains(name)) { "Union name collision '$name'" }
 
-            unions[name] = generateUnion(name, union, target)
+            unions[name] = generateUnion(name, union, parameter_name, scope_name, target)
             return name
         }
 

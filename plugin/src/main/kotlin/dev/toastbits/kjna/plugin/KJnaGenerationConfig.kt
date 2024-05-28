@@ -23,11 +23,8 @@ interface KJnaGenerationConfig {
     val jvm_output_dir: File
 
     @get:OutputDirectory @get:Optional
-    val native_output_dir: File
-}
+    val java_output_dir: File
 
-enum class KJnaBuildTarget {
-    SHARED,
-    JVM,
-    NATIVE
+    @get:OutputDirectory @get:Optional
+    val native_output_dir: File
 }

@@ -35,7 +35,7 @@ open class KJnaPrepareJextractTask: DefaultTask() {
         outputs.upToDateWhen { false }
 
         project.afterEvaluate {
-            final_jextract_binary = getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_dirname).resolve("jextract")
+            final_jextract_binary = getFinalJextractBinaryFile()
         }
     }
 
@@ -43,6 +43,9 @@ open class KJnaPrepareJextractTask: DefaultTask() {
     fun prepareJextract() {
         final_jextract_binary = getJextractBinary()
     }
+
+    @Internal
+    fun getFinalJextractBinaryFile(): File = getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_dirname).resolve("jextract")
 
     private fun getSpecifiedOrSystemJextractBinary(): File? {
         jextract_binary?.also {

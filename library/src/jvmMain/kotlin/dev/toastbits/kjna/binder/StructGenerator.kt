@@ -31,7 +31,7 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
             appendLine(" {")
 
             for ((index, name, type) in struct.definition.fields.withIndex()) {
-                val type_name: String? = type.toKotlinTypeName(false) { createUnion(struct.name, index, it) }
+                val type_name: String? = type.toKotlinTypeName(false) { createUnion(struct.name, name, index, it) }
                 if (type_name == null) {
                     throw NullPointerException(struct.toString())
                 }

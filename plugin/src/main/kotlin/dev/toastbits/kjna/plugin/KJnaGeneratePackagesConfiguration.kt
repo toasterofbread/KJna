@@ -18,8 +18,7 @@ data class KJnaGeneratePackagesConfiguration(
         var package_name: String,
         var enabled: Boolean = true,
         var headers: List<KJnaGeneratePackageHeaderConfiguration> = emptyList(),
-        var libraries: List<String> = emptyList(),
-        var jvm_output_directory: File? = null
+        var libraries: List<String> = emptyList()
     ): Serializable {
         fun addHeader(header_path: String, class_name: String) {
             headers += listOf(KJnaGeneratePackageHeaderConfiguration(header_path, class_name))
@@ -34,7 +33,6 @@ data class KJnaGeneratePackageHeaderConfiguration(
 
 fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(
     compilation: KotlinNativeCompilation,
-    parser: CHeaderParser,
     def_file_directory: File
 ): File {
     val def_file: File = def_file_directory.resolve(package_name + "-" + compilation.target.name + ".def")
@@ -42,7 +40,6 @@ fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(
     compilation.cinterops.apply {
         create(package_name) { cinterop ->
             cinterop.packageName = BinderTargetNativeCinterop.getNativePackageName(package_name)
-            cinterop.headers(headers.map { parser.getHeaderFile(it.header_path) })
             cinterop.defFile(def_file)
         }
     }
@@ -50,15 +47,17 @@ fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(
     return def_file
 }
 
-fun KJnaGeneratePackagesConfiguration.Package.createDefFile(def_file: File) {
+fun KJnaGeneratePackagesConfiguration.Package.createDefFile(def_file: File, parser: CHeaderParser) {
     if (!def_file.exists()) {
         def_file.ensureParentDirsCreated()
         def_file.createNewFile()
     }
 
     val linker_opts: List<String> = libraries.map { "-l$it" }
+    val header_files: List<String> = headers.map { parser.getHeaderFile(it.header_path).absolutePath }
 
     def_file.writeText("""
+        headers = ${header_files.joinToString(" ")}
         linkerOpts = ${linker_opts.joinToString(" ")}
     """.trimIndent())
 }

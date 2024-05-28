@@ -18,12 +18,27 @@ sealed interface CType {
         FLOAT,
         DOUBLE,
         LONG_DOUBLE,
-        BOOL
+        BOOL;
+
+        fun isInteger(): Boolean =
+            when (this) {
+                SHORT,
+                U_SHORT,
+                INT,
+                U_INT,
+                LONG,
+                U_LONG,
+                LONG_LONG,
+                U_LONG_LONG -> true
+                else -> false
+            }
     }
 
     data class TypeDef(val name: String): CType
 
-    data class Struct(val name: String, val definition: CStructDefinition): CType
+    data class Struct(val name: String, val definition: CStructDefinition): CType {
+        fun isTypedef(): Boolean = definition.fields.isEmpty()
+    }
 
     data class Union(val values: Map<String, CValueType>, val anonymous_index: Int?): CType
 

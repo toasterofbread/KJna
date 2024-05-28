@@ -4,12 +4,13 @@ import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.binder.BindingGenerator
+import dev.toastbits.kjna.binder.KJnaBinder
 
 sealed interface KJnaBinderTarget {
     fun getClassModifiers(): List<String> = emptyList()
     fun getSourceFileExtension(): String = "kt"
 
-    fun implementFunction(function: CFunctionDeclaration, function_header: String, context: BindingGenerator.GenerationScope): String
+    fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String
 
     fun implementHeaderConstructor(context: BindingGenerator.GenerationScope): String? = null
     fun implementHeaderInitialiser(all_structs: List<CType.Struct>?, context: BindingGenerator.GenerationScope): String? = null
@@ -21,7 +22,7 @@ sealed interface KJnaBinderTarget {
     fun implementStructAnnotation(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = null
 
     fun implementUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String?
-    fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, context: BindingGenerator.GenerationScope): String
+    fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String, context: BindingGenerator.GenerationScope): String
 
     fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String? = null
 
