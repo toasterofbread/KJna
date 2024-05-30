@@ -8,18 +8,21 @@ import java.io.File
 private fun configureLibraryFile() {
     val working_dir: String = System.getProperty("user.dir")
     val lib_dirs: MutableList<String> = (listOf(working_dir) + System.getProperty("java.library.path").split(";")).toMutableList()
-    
+
     val os_name: String = System.getProperty("os.name")
     val lib_name: String =
         when {
-            os_name == "Linux" -> "libmpv.so"
+            os_name == "Linux" -> {
+                lib_dirs.add("/usr/lib")
+                "libmpv.so"
+            }
             os_name.startsWith("Win") -> "libmpv-2.dll"
             os_name == "Mac OS X" -> TODO()
             else -> throw NotImplementedError(os_name)
         }
-    
+
     var lib_found: Boolean = false
-    
+
     for (dir in lib_dirs) {
         val file: File = File(dir).resolve(lib_name)
         if (file.isFile) {

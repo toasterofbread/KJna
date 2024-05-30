@@ -32,8 +32,7 @@ repositories {
 }
 
 dependencies {
-    val project_version: String = rootProject.extra["project.version"] as String
-    implementation("dev.toastbits.kjna:library:$project_version")
+    implementation(project(":library"))
 
     val json_version: String = rootProject.extra["kotlinx.serialization.json.version"] as String
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$json_version")

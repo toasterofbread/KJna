@@ -25,10 +25,6 @@ pluginManagement {
 
         val dokka_version: String = extra["dokka.version"] as String
         id("org.jetbrains.dokka").version(dokka_version)
-
-        // Plugin included for use in Sample
-        val kjna_version: String = extra["project.version"] as String
-        id("dev.toastbits.kjna").version(kjna_version)
     }
 }
 
