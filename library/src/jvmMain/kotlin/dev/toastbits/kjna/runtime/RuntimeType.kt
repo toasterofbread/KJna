@@ -5,6 +5,7 @@ open class RuntimeType(
     val name: String,
     val coordinates: String
 ) {
+    object KJnaDisabledPackageAccessException: RuntimeType("KJnaDisabledPackageAccessException", "dev.toastbits.kjna.runtime.KJnaDisabledPackageAccessException")
     object KJnaMemScope: RuntimeType("KJnaMemScope", "dev.toastbits.kjna.runtime.KJnaMemScope") {
         val native_scope: String = "native_scope"
         val jvm_arena: String = "jvm_arena"

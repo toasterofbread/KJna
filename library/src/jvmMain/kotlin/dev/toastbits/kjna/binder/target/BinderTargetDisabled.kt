@@ -6,14 +6,14 @@ import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
 import dev.toastbits.kjna.binder.BindingGenerator
 import dev.toastbits.kjna.binder.KJnaBinder
+import dev.toastbits.kjna.runtime.RuntimeType
 
-private const val THROW_ACCESS_ERROR: String = "throw IllegalStateException(\"This package is disabled\")"
 
 class BinderTargetDisabled(): KJnaBinderTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
 
     override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String {
-        return "actual $function_header { $THROW_ACCESS_ERROR }"
+        return "actual $function_header { ${context.getThrowAccessError()} }"
     }
 
     override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
@@ -30,11 +30,11 @@ class BinderTargetDisabled(): KJnaBinderTarget {
 
         return buildString {
             appendLine("actual $field_type $name: $type_name")
-            append("    get() { $THROW_ACCESS_ERROR }")
+            append("    get() { ${context.getThrowAccessError()} }")
 
             if (assignable) {
                 appendLine()
-                append("    set(value) { $THROW_ACCESS_ERROR }")
+                append("    set(value) { ${context.getThrowAccessError()} }")
             }
         }
     }
@@ -59,12 +59,17 @@ class BinderTargetDisabled(): KJnaBinderTarget {
                 append('?')
             }
             appendLine()
-            append("    get() { $THROW_ACCESS_ERROR }")
+            append("    get() { ${context.getThrowAccessError()} }")
 
             if (assignable) {
                 appendLine()
-                append("    set(value) { $THROW_ACCESS_ERROR }")
+                append("    set(value) { ${context.getThrowAccessError()} }")
             }
         }
+    }
+
+    private fun BindingGenerator.GenerationScope.getThrowAccessError(): String {
+        val KJnaDisabledPackageAccessException: String = importRuntimeType(RuntimeType.KJnaDisabledPackageAccessException)
+        return "throw $KJnaDisabledPackageAccessException()"
     }
 }

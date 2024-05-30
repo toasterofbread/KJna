@@ -8,7 +8,7 @@ plugins {
     signing
 }
 
-group = "dev.toastbits"
+group = "dev.toastbits.kjna"
 version = extra["project.version"] as String
 
 gradlePlugin {

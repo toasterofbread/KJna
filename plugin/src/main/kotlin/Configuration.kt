@@ -6,7 +6,8 @@ import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
+import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
 import java.io.File
 
 class KJnaConfiguration(
@@ -21,7 +22,7 @@ class KJnaConfiguration(
             task.withJava()
         }
 
-        project.tasks.withType(KotlinCompile::class.java).all { task ->
+        project.tasks.matching { it is KotlinCompilationTask<*> || it is CInteropProcess }.all { task ->
             task.dependsOn(generate_task)
         }
 
