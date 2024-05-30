@@ -5,23 +5,37 @@ import dev.toastbits.kjna.grammar.*
 data class CTypeDef(val name: String, val type: CValueType)
 
 fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypeDef? {
-    val specifiers: List<CParser.DeclarationSpecifierContext> =
+    var specifiers: List<CParser.DeclarationSpecifierContext> =
         external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier() ?: return null
 
     if (specifiers.isEmpty()) {
         return null
     }
 
-    if (specifiers.size < 2) {
-        TODO(external_declaration.text)
+    if (specifiers.size == 1) {
+        val struct_or_union: CParser.StructOrUnionSpecifierContext = specifiers.first().typeSpecifier()?.structOrUnionSpecifier() ?: return null
+        if (struct_or_union.structOrUnion()?.Struct() != null) {
+            val name: String = struct_or_union.Identifier()?.text ?: return null
+            val type: CType = CType.Struct(name, CStructDefinition(emptyMap()))
+
+            return CTypeDef(name!!, CValueType(type, 0))
+        }
+        else if (struct_or_union.structOrUnion()?.Union() != null) {
+            TODO(specifiers.first().text)
+        }
+        else {
+            TODO(specifiers.first().text)
+        }
     }
 
     var name: String? = null
     var pointer_depth: Int = 0
 
-    if (specifiers.first().storageClassSpecifier()?.Typedef() == null) {
+    val typedef_start: Int = specifiers.indexOfFirst { it.storageClassSpecifier()?.Typedef() != null }
+    if (typedef_start == -1) {
         return null
     }
+    specifiers = specifiers.drop(typedef_start)
 
     if (specifiers.size < 3) {
         for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {

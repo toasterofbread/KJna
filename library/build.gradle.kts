@@ -8,6 +8,7 @@ import org.jetbrains.dokka.gradle.AbstractDokkaLeafTask
 
 plugins {
     kotlin("multiplatform")
+    kotlin("plugin.serialization")
     id("org.jetbrains.dokka")
     id("com.vanniktech.maven.publish")
     id("com.strumenta.antlr-kotlin")
@@ -43,6 +44,9 @@ kotlin {
             dependencies {
                 val antlr_kotlin_version: String = extra["antlrKotlin.version"] as String
                 implementation("com.strumenta:antlr-kotlin-runtime:$antlr_kotlin_version")
+                
+                val json_version: String = extra["kotlinx.serialization.json.version"] as String
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$json_version")
             }
         }
     }

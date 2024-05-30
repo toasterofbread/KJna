@@ -16,6 +16,7 @@ pluginManagement {
     plugins {
         val kotlin_version: String = extra["kotlin.version"] as String
         kotlin("jvm").version(kotlin_version)
+        kotlin("plugin.serialization").version(kotlin_version)
 
         id("com.vanniktech.maven.publish").version("0.28.0")
 

@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
+import dev.toastbits.kjna.c.CTypeDef
 import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.target.BinderTargetShared
 import dev.toastbits.kjna.binder.target.BinderTargetJvmJextract
@@ -27,7 +28,8 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
         listOf(
             "/usr/include/",
             "/usr/local/include/",
-            "/usr/include/linux/"
+            "/usr/include/linux/",
+            "C:/msys64/mingw64/include"
         )
 
     // Outputs
@@ -46,10 +48,10 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
         @Internal
         get() = prepareJextract.jextract_archive_url
         set(value) { prepareJextract.jextract_archive_url = value }
-    var jextract_archive_dirname: String
+    var jextract_archive_exe_path: String
         @Internal
-        get() = prepareJextract.jextract_archive_dirname
-        set(value) { prepareJextract.jextract_archive_dirname = value }
+        get() = prepareJextract.jextract_archive_exe_path
+        set(value) { prepareJextract.jextract_archive_exe_path = value }
     var jextract_archive_extract_directory: File
         @Internal
         get() = prepareJextract.jextract_archive_extract_directory
@@ -116,7 +118,12 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                         )
                     }
 
-                val binder: KJnaBinder = KJnaBinder(pkg.package_name, header_bindings, parser.getAllTypedefsMap())
+                val typedefs: MutableMap<String, CTypeDef> = parser.getAllTypedefsMap().toMutableMap()
+                for ((typedef, type) in pkg.overrides.parseTypedefTypes()) {
+                    typedefs[typedef] = CTypeDef(typedef, type)
+                }
+
+                val binder: KJnaBinder = KJnaBinder(pkg.package_name, header_bindings, typedefs)
 
                 if (pkg.enabled) {
                     return@map binder.generateBindings(bind_targets)

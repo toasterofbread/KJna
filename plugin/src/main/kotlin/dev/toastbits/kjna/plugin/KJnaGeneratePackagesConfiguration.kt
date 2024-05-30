@@ -3,12 +3,16 @@ package dev.toastbits.kjna.plugin
 import java.io.Serializable
 import java.io.File
 import dev.toastbits.kjna.c.CHeaderParser
+import dev.toastbits.kjna.c.CValueType
+import dev.toastbits.kjna.c.CType
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.binder.target.BinderTargetNativeCinterop
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 data class KJnaGeneratePackagesConfiguration(
-    var packages: List<Package> = emptyList()
+    var packages: List<Package> = emptyList(),
 ): Serializable {
     fun add(package_name: String, configure: Package.() -> Unit) {
         packages += listOf(Package(package_name).also { configure(it) })
@@ -18,10 +22,25 @@ data class KJnaGeneratePackagesConfiguration(
         var package_name: String,
         var enabled: Boolean = true,
         var headers: List<KJnaGeneratePackageHeaderConfiguration> = emptyList(),
-        var libraries: List<String> = emptyList()
+        var libraries: List<String> = emptyList(),
+        var overrides: PackageOverrides = PackageOverrides()
     ): Serializable {
         fun addHeader(header_path: String, class_name: String) {
             headers += listOf(KJnaGeneratePackageHeaderConfiguration(header_path, class_name))
+        }
+    }
+
+    data class PackageOverrides(
+        var typedef_types: Map<String, String> = emptyMap()
+    ): Serializable {
+        @Transient
+        private val json: Json = Json { useArrayPolymorphism = true }
+
+        fun parseTypedefTypes(): Map<String, CValueType> =
+            typedef_types.entries.associate { it.key to json.decodeFromString(it.value) }
+
+        fun overrideTypedefType(name: String, type: CType, pointer_depth: Int = 0) {
+            typedef_types = typedef_types.toMutableMap().also { it[name] = json.encodeToString(CValueType(type, pointer_depth)) }
         }
     }
 }

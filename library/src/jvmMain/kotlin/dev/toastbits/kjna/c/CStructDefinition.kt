@@ -3,7 +3,9 @@ package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
 import dev.toastbits.kjna.c.PackageGenerationScope
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class CStructDefinition(
     val fields: Map<String, CValueType>
 )

@@ -18,11 +18,11 @@ open class KJnaPrepareJextractTask: DefaultTask() {
 
     @Input
     @Optional
-    var jextract_archive_url: String = "https://download.java.net/java/early_access/jextract/22/4/openjdk-22-jextract+4-30_linux-x64_bin.tar.gz"
+    var jextract_archive_url: String = getPlatformJextractUrl()
 
     @Input
     @Optional
-    var jextract_archive_dirname: String = "jextract-22"
+    var jextract_archive_exe_path: String = getPlatformJextractArchiveExePath()
 
     @OutputDirectory
     @Optional
@@ -43,7 +43,7 @@ open class KJnaPrepareJextractTask: DefaultTask() {
     }
 
     @Internal
-    fun getFinalJextractBinaryFile(): File = getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_dirname).resolve("jextract")
+    fun getFinalJextractBinaryFile(): File = getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_exe_path)
 
     private fun getSpecifiedOrSystemJextractBinary(): File? {
         jextract_binary?.also {
@@ -63,7 +63,7 @@ open class KJnaPrepareJextractTask: DefaultTask() {
             return file
         }
 
-        val binary: File = jextract_archive_extract_directory.resolve(jextract_archive_dirname).resolve("jextract")
+        val binary: File = jextract_archive_extract_directory.resolve(jextract_archive_exe_path)
         if (binary.isFile()) {
             return binary
         }
@@ -100,4 +100,43 @@ open class KJnaPrepareJextractTask: DefaultTask() {
     companion object {
         const val NAME: String = "kjnaPrepareJextract"
     }
+}
+
+private fun getPlatformJextractUrl(): String {
+    val arch: String = System.getProperty("os.arch").lowercase()
+    val os: OperatingSystem = OperatingSystem.current()
+    
+    if (arch == "x86_64" || arch == "amd64") {
+        if (os.isLinux()) {
+            return "https://download.java.net/java/early_access/jextract/22/4/openjdk-22-jextract+4-30_linux-x64_bin.tar.gz"
+        }
+        else if (os.isWindows()) {
+            return "https://download.java.net/java/early_access/jextract/22/5/openjdk-22-jextract+5-33_windows-x64_bin.tar.gz"
+        }
+        else if (os.isMacOsX()) {
+            return "https://download.java.net/java/early_access/jextract/22/5/openjdk-22-jextract+5-33_macos-x64_bin.tar.gz"
+        }
+    }
+    else if (arch == "arm64" || arch == "aarch64") {
+        if (os.isMacOsX()) {
+            return "https://download.java.net/java/early_access/jextract/22/5/openjdk-22-jextract+5-33_macos-aarch64_bin.tar.gz"
+        }
+    }
+
+    throw RuntimeException("OS/arch combination not supported by Jextract ($os - $arch)")
+}
+
+private fun getPlatformJextractArchiveExePath(): String {
+    val os: OperatingSystem = OperatingSystem.current()
+    if (os.isLinux()) {
+        return "jextract-22/jextract"
+    }
+    else if (os.isWindows()) {
+        return "jextract-22/bin/jextract.bat"
+    }
+    else if (os.isMacOsX()) {
+        TODO()
+    }
+
+    throw RuntimeException("OS not supported by Jextract ($os)")
 }

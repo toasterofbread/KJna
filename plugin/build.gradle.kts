@@ -2,6 +2,7 @@ import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
     kotlin("jvm")
+    kotlin("plugin.serialization")
     id("org.jetbrains.dokka")
     id("com.gradle.plugin-publish").version("1.2.1")
     signing
@@ -33,6 +34,9 @@ repositories {
 dependencies {
     val project_version: String = rootProject.extra["project.version"] as String
     implementation("dev.toastbits.kjna:library:$project_version")
+
+    val json_version: String = rootProject.extra["kotlinx.serialization.json.version"] as String
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$json_version")
 
     implementation("de.undercouch:gradle-download-task:5.6.0")
     implementation("org.codehaus.plexus:plexus-archiver:4.9.2")

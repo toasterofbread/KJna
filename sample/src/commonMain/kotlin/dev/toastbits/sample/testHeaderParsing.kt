@@ -11,7 +11,7 @@ fun testHeaderParsing() {
 
     val header_path: String = "/usr/include/mpv/client.h"
 
-    val parser: CHeaderParser = CHeaderParser()
+    val parser: CHeaderParser = CHeaderParser(listOf("/usr/include/", "/usr/local/include/", "/usr/include/linux/"))
     parser.parse(listOf(header_path))
 
     val typedefs: Map<String, CTypeDef> = parser.getAllTypedefsMap()

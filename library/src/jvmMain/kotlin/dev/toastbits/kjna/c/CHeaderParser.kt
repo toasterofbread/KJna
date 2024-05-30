@@ -11,7 +11,7 @@ import org.antlr.v4.kotlinruntime.ParserRuleContext
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class CHeaderParser(include_dirs: List<String>? = null) {
+class CHeaderParser(include_dirs: List<String>) {
     data class HeaderInfo(
         val absolute_path: String,
         val functions: List<CFunctionDeclaration>,
@@ -23,8 +23,7 @@ class CHeaderParser(include_dirs: List<String>? = null) {
     }
 
     private val parsed_headers: MutableMap<String, HeaderInfo> = mutableMapOf()
-    val include_dirs: List<Path> =
-        (include_dirs ?: listOf("/usr/include/", "/usr/local/include/", "/usr/include/linux/")).map { Paths.get(it) }
+    val include_dirs: List<Path> = include_dirs.map { Paths.get(it) }
 
     fun getAllHeaders(): List<HeaderInfo> = parsed_headers.values.toList()
     fun getHeaderByInclude(header: String): HeaderInfo = parsed_headers[header]!!
@@ -118,7 +117,7 @@ class CHeaderParser(include_dirs: List<String>? = null) {
                         else -> throw NotImplementedError(line)
                     }
 
-                val end_index: Int = line.indexOf(end, 9)
+                val end_index: Int = line.indexOf(end, 10)
                 check(end_index != -1) { line }
 
                 return@mapNotNull line.substring(10, end_index)

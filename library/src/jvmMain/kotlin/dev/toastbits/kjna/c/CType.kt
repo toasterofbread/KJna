@@ -1,8 +1,11 @@
 package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
+import kotlinx.serialization.Serializable
 
+@Serializable
 sealed interface CType {
+    @Serializable
     enum class Primitive: CType {
         VOID,
         CHAR,
@@ -34,16 +37,21 @@ sealed interface CType {
             }
     }
 
+    @Serializable
     data class TypeDef(val name: String): CType
 
+    @Serializable
     data class Struct(val name: String, val definition: CStructDefinition): CType {
         fun isTypedef(): Boolean = definition.fields.isEmpty()
     }
 
+    @Serializable
     data class Union(val values: Map<String, CValueType>, val anonymous_index: Int?): CType
 
+    @Serializable
     data class Enum(val name: String, val values: Map<String, Int>): CType
 
+    @Serializable
     data class Function(val shape: CFunctionDeclaration, val data_send_param: Int? = null, val data_recv_param: Int? = null): CType {
         companion object {
             val FUNCTION_DATA_PARAM_TYPE: CValueType = CValueType(CType.Primitive.VOID, 1)
@@ -146,6 +154,9 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
     }
     if (type_specifier.Bool() != null) {
         return CType.Primitive.BOOL
+    }
+    if (type_specifier.Unsigned() != null) {
+        return CType.Primitive.INT
     }
 
     type_specifier.typedefName()?.Identifier()?.text?.also {

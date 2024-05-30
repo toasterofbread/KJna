@@ -2,7 +2,9 @@ package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
 import dev.toastbits.kjna.c.PackageGenerationScope
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class CFunctionDeclaration(
     val name: String,
     val return_type: CValueType?,
