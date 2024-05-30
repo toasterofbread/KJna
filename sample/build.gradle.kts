@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.gradle.internal.os.OperatingSystem
+import dev.toastbits.kjna.c.CType
 
 plugins {
     kotlin("multiplatform")
@@ -21,11 +23,17 @@ kotlin {
 
     kjna {
         generate {
+            override_jextract_loader = true
+
             packages(native_targets) {
                 add("kjna.libmpv") {
                     enabled = true
                     addHeader("mpv/client.h", "MpvClient")
                     libraries = listOf("mpv")
+
+                    if (OperatingSystem.current().isWindows()) {
+                        overrides.overrideTypedefType("size_t", CType.Primitive.LONG)
+                    }
                 }
             }
         }

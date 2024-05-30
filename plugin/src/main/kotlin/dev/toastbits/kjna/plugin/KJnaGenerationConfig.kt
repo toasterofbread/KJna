@@ -13,6 +13,9 @@ interface KJnaGenerationConfig {
     @get:Input @get:Optional
     var include_dirs: List<String>
 
+    @get:Input
+    var override_jextract_loader: Boolean
+
     @get:OutputDirectory @get:Optional
     val native_def_output_dir: File
 

@@ -47,7 +47,8 @@ data class KJnaGeneratePackagesConfiguration(
 
 data class KJnaGeneratePackageHeaderConfiguration(
     val header_path: String,
-    val class_name: String
+    val class_name: String,
+    var override_jextract_loader: Boolean? = null
 ): Serializable
 
 fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(

@@ -34,7 +34,7 @@ class KJnaConfiguration(
 }
 
 class KJnaGenerateConfiguration(
-    val config: KJnaConfiguration,
+    val config: KJnaConfiguration
 ): KJnaGenerationConfig by config.generate_task {
     fun packages(native_targets: List<KotlinNativeTarget> = emptyList(), configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
         val packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration().also { configure(it) }

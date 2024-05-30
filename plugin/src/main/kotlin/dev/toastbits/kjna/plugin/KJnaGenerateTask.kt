@@ -31,6 +31,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
             "/usr/include/linux/",
             "C:/msys64/mingw64/include"
         )
+    override var override_jextract_loader: Boolean = false
 
     // Outputs
     private val build_dir: File = project.layout.buildDirectory.dir("kjna").get().asFile
@@ -79,6 +80,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
                 jextractGenerate.jextract_binary = prepareJextract.getFinalJextractBinaryFile()
                 jextractGenerate.packages = packages
                 jextractGenerate.include_dirs = include_dirs
+                jextractGenerate.override_jextract_loader = override_jextract_loader
                 jextractGenerate.output_directory = java_output_dir
 
                 jextractGenerate.dependsOn(prepareJextract)
@@ -173,12 +175,3 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
         const val NAME: String = "generateKJnaBindings"
     }
 }
-
-// afterEvaluate {
-//     for (task in listOf("compileKotlinJvm", "jvmSourcesJar")) {
-//         tasks.getByName(task) {
-//             dependsOn(tasks.jextract)
-//         }
-//     }
-// }
-
