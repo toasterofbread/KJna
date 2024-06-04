@@ -10,23 +10,16 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.Files.getPosixFilePermissions
 import java.nio.file.Files.setPosixFilePermissions
 import de.undercouch.gradle.tasks.download.DownloadExtension
+import dev.toastbits.kjna.plugin.options.KJnaJextractBinaryOptions
 
-open class KJnaPrepareJextractTask: DefaultTask() {
-    @InputFile
-    @Optional
-    var jextract_binary: File? = null
+open class KJnaPrepareJextractTask: DefaultTask(), KJnaJextractBinaryOptions {
+    // Inputs
+    override var jextract_binary: File? = null
+    override var jextract_archive_url: String = getPlatformJextractUrl()
+    override var jextract_archive_exe_path: String = getPlatformJextractArchiveExePath()
 
-    @Input
-    @Optional
-    var jextract_archive_url: String = getPlatformJextractUrl()
-
-    @Input
-    @Optional
-    var jextract_archive_exe_path: String = getPlatformJextractArchiveExePath()
-
-    @OutputDirectory
-    @Optional
-    var jextract_archive_extract_directory: File = project.rootProject.layout.buildDirectory.file("jextract").get().asFile
+    // Outputs
+    override var jextract_archive_extract_directory: File = project.rootProject.layout.buildDirectory.file("jextract").get().asFile
 
     @OutputFile
     lateinit var final_jextract_binary: File
@@ -105,7 +98,7 @@ open class KJnaPrepareJextractTask: DefaultTask() {
 private fun getPlatformJextractUrl(): String {
     val arch: String = System.getProperty("os.arch").lowercase()
     val os: OperatingSystem = OperatingSystem.current()
-    
+
     if (arch == "x86_64" || arch == "amd64") {
         if (os.isLinux()) {
             return "https://download.java.net/java/early_access/jextract/22/4/openjdk-22-jextract+4-30_linux-x64_bin.tar.gz"

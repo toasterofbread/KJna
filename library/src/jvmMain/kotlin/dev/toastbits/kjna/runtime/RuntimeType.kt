@@ -17,6 +17,7 @@ open class RuntimeType(
     object KJnaAllocationCompanion: RuntimeType("KJnaAllocationCompanion", "dev.toastbits.kjna.runtime.KJnaAllocationCompanion") {
         val registerAllocationCompanion: String = "registerAllocationCompanion"
     }
+    object KJnaVarargList: RuntimeType("KJnaVarargList", "dev.toastbits.kjna.runtime.KJnaVarargList")
 
     // Native
     object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")

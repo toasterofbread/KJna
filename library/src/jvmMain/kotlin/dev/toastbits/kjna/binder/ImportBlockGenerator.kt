@@ -1,24 +1,25 @@
 package dev.toastbits.kjna.binder
 
-fun generateImportBlock(imports: List<Pair<String, String?>>): String = buildString {
-    if (imports.isNotEmpty()) {
-        for ((import, alias) in imports.distinct().sortedBy { it.first }) {
-            append("import $import")
+fun generateImportBlock(imports: List<BindingGenerator.Import>, binder: KJnaBinder): String = buildString {
+    if (imports.isEmpty()) {
+        return@buildString
+    }
 
-            if (alias != null) {
-                val last_dot: Int = import.lastIndexOf('.')
-                val import_name: String =
-                    if (last_dot == -1) import
-                    else import.substring(last_dot + 1)
+    val import_coordinates: List<Pair<String, String?>> = imports.map {
+        val coordinates: String = it.getImportCoordinates(binder)
+        val alias: String? = it.getAlias()?.takeIf { it != coordinates.split(".").last() }
+        return@map coordinates to alias
+    }
 
-                if (alias != import_name) {
-                    append(" as ")
-                    append(alias)
-                }
-            }
+    for ((coordinates, alias) in import_coordinates.distinct().sortedBy { it.first }) {
+        append("import $coordinates")
 
-            appendLine()
+        if (alias != null) {
+            append(" as ")
+            append(alias)
         }
+
         appendLine()
     }
+    appendLine()
 }

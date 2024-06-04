@@ -4,6 +4,11 @@ object Constants {
     const val TOP_LEVEL_PACKAGE: String = "kjna"
     const val STRUCT_PACKAGE_NAME: String = "$TOP_LEVEL_PACKAGE.struct"
     const val ENUM_PACKAGE_NAME: String = "$TOP_LEVEL_PACKAGE.enum"
+    const val UNION_PACKAGE_NAME: String = "$TOP_LEVEL_PACKAGE.union"
 
-    const val NATIVE_ENUM_CONVERT_FUNCTION: String = "toNative"
+    fun formatKotlinFieldName(name: String): String =
+        when (name) {
+            "in" -> "`$name`"
+            else -> name
+        }
 }

@@ -1,10 +1,11 @@
 package dev.toastbits.kjna.c
 
 import dev.toastbits.kjna.grammar.*
+import dev.toastbits.kjna.binder.KJnaBinder
 
-data class CTypeDef(val name: String, val type: CValueType)
+data class CTypedef(val name: String, val type: CValueType)
 
-fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypeDef? {
+fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypedef? {
     var specifiers: List<CParser.DeclarationSpecifierContext> =
         external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier() ?: return null
 
@@ -13,23 +14,23 @@ fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser
     }
 
     if (specifiers.size == 1) {
-        val struct_or_union: CParser.StructOrUnionSpecifierContext = specifiers.first().typeSpecifier()?.structOrUnionSpecifier() ?: return null
-        if (struct_or_union.structOrUnion()?.Struct() != null) {
-            val name: String = struct_or_union.Identifier()?.text ?: return null
-            val type: CType = CType.Struct(name, CStructDefinition(emptyMap()))
+        val struct_or_union: CParser.StructOrUnionSpecifierContext = specifiers.single().typeSpecifier()?.structOrUnionSpecifier() ?: return null
+        val name: String = struct_or_union.Identifier()?.text ?: return null
+        val struct_definition: CStructDefinition? = struct_or_union.structDeclarationList()?.structDeclaration()?.let { parseStructDefinition(it) }
 
-            return CTypeDef(name!!, CValueType(type, 0))
+        val type: CType
+        if (struct_or_union.structOrUnion()?.Struct() != null) {
+            type = CType.Struct(name, struct_definition, null)
         }
         else if (struct_or_union.structOrUnion()?.Union() != null) {
-            TODO(specifiers.first().text)
+            type = CType.Union(name, struct_definition?.fields, null)
         }
         else {
             TODO(specifiers.first().text)
         }
-    }
 
-    var name: String? = null
-    var pointer_depth: Int = 0
+        return CTypedef(name, CValueType(type, 0))
+    }
 
     val typedef_start: Int = specifiers.indexOfFirst { it.storageClassSpecifier()?.Typedef() != null }
     if (typedef_start == -1) {
@@ -37,9 +38,35 @@ fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser
     }
     specifiers = specifiers.drop(typedef_start)
 
-    if (specifiers.size < 3) {
+    // try {
+    parseFunctionTypedefDeclaration(specifiers, external_declaration)?.also { return it }
+    // }
+    // catch (e: Throwable) {
+    //     println("AAAAA ${external_declaration.text}")
+    //     println(external_declaration.declaration()?.initDeclaratorList()?.text)
+
+    //     for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {
+    //     }
+
+    //     throw RuntimeException(e)
+    // }
+
+    var name: String? = null
+    var pointer_depth: Int = 0
+    var array_size: Int? = null
+
+    // if (specifiers.size < 3) {
         for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {
-            declarator.directDeclarator().Identifier()?.text?.also {
+            val direct_declarator: CParser.DirectDeclaratorContext = declarator.directDeclarator()
+
+            if (direct_declarator.LeftBracket() != null) {
+                check(direct_declarator.RightBracket() != null)
+                name = declarator.directDeclarator().directDeclarator()!!.text
+                array_size = direct_declarator.assignmentExpression()!!.conditionalExpression()!!.logicalOrExpression()!!.logicalAndExpression()!!.single().text.toInt()
+                break
+            }
+
+            (direct_declarator.Identifier() ?: direct_declarator.directDeclarator()?.Identifier())?.text?.also {
                 name = it
                 pointer_depth = declarator.pointer()?.Star()?.size ?: 0
             }
@@ -48,26 +75,36 @@ fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser
                 break
             }
         }
-    }
+    // }
 
     val type: CType
 
-    if (name == null) {
-        name = specifiers.last().typeSpecifier()?.typedefName()?.Identifier()?.text ?: return null
-        type = parseDeclarationSpecifierType(specifiers.drop(1).dropLast(1))
+    try {
+        if (name == null) {
+            name = specifiers.last().typeSpecifier()?.typedefName()?.Identifier()?.text ?: return null
+            type = parseDeclarationSpecifierType(specifiers.drop(1).dropLast(1), name)
+        }
+        else {
+            type = parseDeclarationSpecifierType(specifiers.drop(1), name)
+        }
     }
-    else {
-        type = parseDeclarationSpecifierType(specifiers.drop(1))
+    catch (e: Throwable) {
+        throw RuntimeException("parseDeclarationSpecifierType failed ($array_size, ${external_declaration.text}, ${specifiers.map { it.text }})", e)
     }
 
-    return CTypeDef(name!!, CValueType(type, pointer_depth = pointer_depth))
+    if (array_size != null) {
+        check(array_size > 0) { array_size }
+        return CTypedef(name!!, CValueType(CType.Array(CValueType(type, pointer_depth = pointer_depth), array_size), 0))
+    }
+
+    return CTypedef(name!!, CValueType(type, pointer_depth = pointer_depth))
 }
 
-fun CType.TypeDef.resolve(typedefs: Map<String, CTypeDef>): CValueType {
+fun CType.Typedef.resolve(getTypedef: (String) -> CTypedef?): CValueType {
     val passed: MutableList<String> = mutableListOf(name)
     while (true) {
-        val type: CValueType = typedefs[passed.last()]?.type ?: break
-        if (type.type is CType.TypeDef) {
+        val type: CValueType = getTypedef(passed.last())?.type ?: break
+        if (type.type is CType.Typedef) {
             if (passed.contains(type.type.name)) {
                 throw RuntimeException("Recursive typedef (this=$name, duplicate=${type.type.name}, passed=$passed}")
             }
@@ -81,7 +118,65 @@ fun CType.TypeDef.resolve(typedefs: Map<String, CTypeDef>): CValueType {
 
     when (passed.last()) {
         "size_t" -> return CValueType(CType.Primitive.U_LONG, 0)
+        "wchar_t" -> return CValueType(CType.Primitive.CHAR, 0)
+        "__builtin_va_list" -> return CValueType(CType.Primitive.VALIST, 0)
     }
 
     throw RuntimeException("Unresolved typedef '$this' -> '${passed.last()}' (${passed.size})")
+}
+
+fun CType.Typedef.resolve(typedefs: Map<String, CTypedef>): CValueType =
+    resolve { typedefs[it] }
+
+fun CValueType.fullyResolve(binder: KJnaBinder): CValueType {
+    if (type !is CType.Typedef) {
+        return this
+    }
+    return type.resolve(binder.typedefs).let { it.copy(pointer_depth = it.pointer_depth + pointer_depth) }
+}
+
+fun CValueType.fullyResolve(parser: CHeaderParser): CValueType {
+    if (type !is CType.Typedef) {
+        return this
+    }
+    return type.resolve { parser.getTypedef(it) }.let { it.copy(pointer_depth = it.pointer_depth + pointer_depth) }
+}
+
+
+private fun PackageGenerationScope.parseFunctionTypedefDeclaration(specifiers: List<CParser.DeclarationSpecifierContext>, external_declaration: CParser.ExternalDeclarationContext): CTypedef? {
+    if (specifiers.size < 2) {
+        return null
+    }
+
+    val init_declarators: List<CParser.InitDeclaratorContext>? = external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()
+    if (init_declarators?.size != 1) {
+        return null
+    }
+
+    val direct_declarator: CParser.DirectDeclaratorContext = init_declarators?.firstOrNull()?.declarator()?.directDeclarator() ?: return null
+    val directer_declarator: CParser.DirectDeclaratorContext = direct_declarator.directDeclarator() ?: return null
+
+    val name: String = directer_declarator.declarator()?.directDeclarator()?.Identifier()?.text ?: return null
+    val pointer_depth: Int = directer_declarator.declarator()?.pointer()?.Star()?.size ?: 0
+
+    val declarator_parameters: List<CParser.ParameterDeclarationContext> =
+        direct_declarator.parameterTypeList()?.parameterList()?.parameterDeclaration() ?: throw NullPointerException("No params")
+    val parameters: List<CFunctionParameter> = declarator_parameters.let { parseFunctionParameters(it) }
+
+    val return_type: CType = parseDeclarationSpecifierType(specifiers)
+    val return_type_pointer_depth: Int = init_declarators.first().declarator()?.pointer()?.Star()?.size ?: 0
+
+    return CTypedef(
+        name,
+        CValueType(
+            CType.Function(
+                CFunctionDeclaration(
+                    name = name,
+                    return_type = CValueType(return_type, return_type_pointer_depth),
+                    parameters = parameters
+                )
+            ),
+            pointer_depth
+        )
+    )
 }

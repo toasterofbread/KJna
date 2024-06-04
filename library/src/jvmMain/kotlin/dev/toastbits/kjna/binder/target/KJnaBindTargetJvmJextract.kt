@@ -4,15 +4,15 @@ import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
+import dev.toastbits.kjna.c.fullyResolve
 import dev.toastbits.kjna.runtime.RuntimeType
 import dev.toastbits.kjna.binder.BindingGenerator
 import dev.toastbits.kjna.binder.Constants
 import dev.toastbits.kjna.binder.KJnaBinder
 import withIndex
 
-class BinderTargetJvmJextract(): KJnaBinderTarget {
+class KJnaBindTargetJvmJextract(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
-    override fun getSourceFileExtension(): String = "jvm.kt"
 
     override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String =
         buildString {
@@ -22,7 +22,11 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
 
             val return_type: String? =
                 with (context) {
-                    function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, null, it) }
+                    function.return_type.toKotlinTypeName(
+                        true,
+                        createUnion = { createUnion(function.name, null, null, it) },
+                        createStruct = { createStruct(function.name, null, null, it) }
+                    )
                 }?.takeIf { it != "Unit" }
 
             val arena_name: String = "_arena"
@@ -40,12 +44,10 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                 append('(')
 
                 val function_data_params: Map<Int, Int> = function.parameters.mapIndexedNotNull { index, param ->
-                    val actual_type: CValueType =
-                        if (param.type.type is CType.TypeDef) param.type.type.resolve(context.binder.typedefs)
-                        else param.type
+                    val actual_type: CValueType = param.type.fullyResolve(context.binder)
 
-                    if (actual_type.type is CType.Function) {
-                        return@mapIndexedNotNull actual_type.type.data_send_param!! to index
+                    if (actual_type.type is CType.Function && actual_type.type.data_params != null) {
+                        return@mapIndexedNotNull actual_type.type.data_params.send to index
                     }
 
                     return@mapIndexedNotNull null
@@ -70,14 +72,16 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                         continue
                     }
 
-                    val actual_type: CValueType =
-                        if (param.type.type is CType.TypeDef) param.type.type.resolve(context.binder.typedefs)
-                        else param.type
+                    val actual_type: CValueType = param.type.fullyResolve(context.binder)
 
                     val param_name: String = param_names[index]
 
                     val param_type: String? = with(context) {
-                        param.type.toKotlinTypeName(false) { createUnion(function.name, param_name, index, it) }
+                        param.type.toKotlinTypeName(
+                            false,
+                            createUnion = { createUnion(function.name, param_name, index, it) },
+                            createStruct = { createStruct(function.name, param_name, index, it) }
+                        )
                     }
                     if (param_type == null) {
                         if (function.parameters.size == 1) {
@@ -128,7 +132,7 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                         }
 
                         append('.')
-                        append(BinderTargetShared.ENUM_CLASS_VALUE_PARAM)
+                        append(KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM)
                     }
                     else if ((actual_type.type == CType.Primitive.U_LONG || actual_type.type == CType.Primitive.U_LONG_LONG) && actual_type.pointer_depth == 0) {
                         append(".toLong()")
@@ -149,22 +153,22 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
 
                 append(')')
 
-                if (function.return_type == CValueType(CType.Primitive.CHAR, 1)) {
+                val actual_return_type: CValueType? = function?.return_type?.fullyResolve(context.binder)
+
+                if (actual_return_type == CValueType(CType.Primitive.CHAR, 1)) {
                     val getString: String = context.importRuntimeType(RuntimeType.getString)
                     append("?.$getString()")
                 }
-                else if (function.return_type == CValueType(CType.Primitive.U_LONG, 0)) {
+                else if (actual_return_type == CValueType(CType.Primitive.U_LONG, 0)) {
                     append(".toULong()")
                 }
-                else if (function.return_type?.pointer_depth?.let { it > 0 } == true) {
-                    val KJnaTypedPointer: String = context.importRuntimeType(RuntimeType.KJnaTypedPointer)
+                else if (actual_return_type?.pointer_depth?.let { it > 0 } == true) {
+                    val pointer_constructor: String =
+                        if (actual_return_type.type == CType.Primitive.VOID) context.importRuntimeType(RuntimeType.KJnaPointer)
+                        else context.importRuntimeType(RuntimeType.KJnaTypedPointer) + ".ofNativeObject"
 
-                    for (i in 0 until function.return_type.pointer_depth) {
-                        if (return_type?.last() == '?') {
-                            append('?')
-                        }
-                        // TODO
-                        append(".let { $KJnaTypedPointer.ofNativeObject(it) }")
+                    for (i in 0 until actual_return_type.pointer_depth) {
+                        append("?.let { $pointer_constructor(it) }")
                     }
                 }
             }
@@ -193,21 +197,21 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
             appendLine()
 
             appendLine("init {")
-            for (struct in all_structs.map { context.importStruct(it.name) }.sorted()) {
+            for (struct in all_structs.mapNotNull { it.name?.let { context.importStruct(it) } }.sorted()) {
                 appendLine("    $KJnaAllocationCompanion.${RuntimeType.KJnaAllocationCompanion.registerAllocationCompanion}($struct.Companion)")
             }
             append("}")
         }
     }
 
-    override fun implementStructConstructor(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
+    override fun implementStructConstructor(struct: CType.Struct, name: String, context: BindingGenerator.GenerationScope): String? {
         context.importFromCoordinates("java.lang.foreign.Arena")
         context.importFromCoordinates("java.lang.foreign.MemorySegment")
         return "constructor(val $STRUCT_VALUE_PROPERTY_NAME: MemorySegment, private val $MEM_SCOPE_PROPERTY_NAME: Arena = Arena.ofAuto())"
     }
 
-    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
-        return implementField(name, index, type, type_name, struct.name, null, context)
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, scope_name: String?, context: BindingGenerator.GenerationScope): String {
+        return implementField(name, index, type, type_name, scope_name, null, context)
     }
 
     override fun implementStructToStringMethod(struct: CType.Struct, context: BindingGenerator.GenerationScope): String = buildString {
@@ -216,13 +220,13 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
         append(struct.name)
         append('(')
 
-        for ((index, field, _) in struct.definition.fields.withIndex()) {
+        for ((index, field, _) in struct.definition?.fields?.withIndex() ?: emptyList()) {
             append(field)
             append('=')
             append('$')
             append(field)
 
-            if (index + 1 != struct.definition.fields.size) {
+            if (index + 1 != struct.definition?.fields?.size) {
                 append(", ")
             }
         }
@@ -235,12 +239,12 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
         return "constructor(val $STRUCT_VALUE_PROPERTY_NAME: MemorySegment, private val $MEM_SCOPE_PROPERTY_NAME: Arena = Arena.ofAuto())"
     }
 
-    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String?, context: BindingGenerator.GenerationScope): String {
         return implementField(name, index, type, if (type_name.last() == '?') type_name else (type_name + '?'), scope_name, union_field_name, context)
     }
 
     override fun implementStructCompanionObject(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = buildString {
-        val T: String = struct.name
+        val T: String = struct.name ?: return null
 
         append("companion object: ")
         append(context.importRuntimeType(RuntimeType.KJnaAllocationCompanion))
@@ -253,8 +257,8 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                 val KJnaMemScope: String = context.importRuntimeType(RuntimeType.KJnaMemScope)
 
                 appendLine("override fun allocate(scope: $KJnaMemScope): $KJnaTypedPointer<$T> {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     val jextract_type_alias: String = context.importJextractName(struct.name)
@@ -263,8 +267,8 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                 appendLine('}')
 
                 appendLine("override fun construct(from: $KJnaPointer): $T {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.pointer})")
@@ -272,8 +276,8 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                 appendLine('}')
 
                 appendLine("override fun set(value: $T, pointer: $KJnaTypedPointer<$T>) {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     appendLine("    pointer.pointer = value.$STRUCT_VALUE_PROPERTY_NAME")
@@ -300,18 +304,14 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
         index: Int,
         type: CValueType,
         type_name: String,
-        scope_name: String,
+        scope_name: String?,
         union_field_name: String?,
         context: BindingGenerator.GenerationScope
     ): String = buildString {
-        var pointer_depth: Int = type.pointer_depth
-        val actual_type: CValueType =
-            if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs).also { pointer_depth += it.pointer_depth }
-            else type
-
-        if (actual_type.type == CType.Primitive.CHAR && pointer_depth > 0) {
-            pointer_depth--
-        }
+        val actual_type: CValueType = type.fullyResolve(context.binder)
+        val pointer_depth: Int =
+            if (actual_type.type == CType.Primitive.CHAR && actual_type.pointer_depth > 0) actual_type.pointer_depth - 1
+            else actual_type.pointer_depth
 
         val assignable: Boolean =
             actual_type.type !is CType.Union && (union_field_name != null || pointer_depth > 0 || actual_type.type !is CType.Struct)
@@ -320,11 +320,11 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
             if (assignable) "var"
             else "val"
 
-        append("actual $field_type $name: $type_name")
+        append("actual $field_type ${Constants.formatKotlinFieldName(name)}: $type_name")
 
         val name: String = union_field_name ?: name
 
-        val jextract_class_name: String = context.importJextractName(scope_name)
+        val jextract_class_name: String = context.importJextractName(scope_name!!)
 
         if (type_name == "String?") {
             val getString: String = context.importRuntimeType(RuntimeType.getString)
@@ -341,7 +341,7 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
 
         when (actual_type.type) {
             is CType.Union -> {
-                val union_name: String = context.getUnion(scope_name, index)
+                val union_name: String = context.getLocalClassName(scope_name!!, index)
                 appendLine(" = $union_name($jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME))")
                 return@buildString
             }
@@ -383,6 +383,7 @@ class BinderTargetJvmJextract(): KJnaBinderTarget {
                                     CType.Primitive.DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
                                     CType.Primitive.LONG_DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
                                     CType.Primitive.BOOL -> append("ValueLayout.JAVA_BOOLEAN")
+                                    CType.Primitive.VALIST -> append("TODO()")
                                 }
                                 append(", 0)")
                             }
@@ -474,7 +475,7 @@ private fun getJextractTypeAlias(name: String): String =
     "_jextract_" + name
 
 private fun BindingGenerator.GenerationScope.importJextractName(name: String): String {
-    val jextract_type_coordinates: String = BinderTargetJvmJextract.getJvmPackageName(binder.package_name) + '.' + name
+    val jextract_type_coordinates: String = KJnaBindTargetJvmJextract.getJvmPackageName(binder.package_name) + '.' + name
     val jextract_type_alias: String = getJextractTypeAlias(name)
     importFromCoordinates(jextract_type_coordinates, jextract_type_alias)
     return jextract_type_alias

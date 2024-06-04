@@ -4,15 +4,15 @@ import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
+import dev.toastbits.kjna.c.fullyResolve
 import dev.toastbits.kjna.runtime.RuntimeType
 import dev.toastbits.kjna.binder.BindingGenerator
 import dev.toastbits.kjna.binder.Constants
 import dev.toastbits.kjna.binder.KJnaBinder
 import withIndex
 
-class BinderTargetNativeCinterop(): KJnaBinderTarget {
+class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
-    override fun getSourceFileExtension(): String = "native.kt"
 
     override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String =
         buildString {
@@ -20,27 +20,41 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
             append(function_header)
             appendLine(" {")
 
+            val actual_return_type: CValueType? = function?.return_type?.fullyResolve(context.binder)
+
             val return_type: String? =
                 with (context) {
-                    function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, null, it) }
+                    actual_return_type.toKotlinTypeName(
+                        true,
+                        createUnion = { createUnion(function.name, null, null, it) },
+                        createStruct = { createStruct(function.name, null, null, it) }
+                    )
                 }?.takeIf { it != "Unit" }
 
             append("    ")
             if (return_type != null) {
                 append("return ")
             }
+
+            val actual_parameter_types: List<CValueType> = function.parameters.map { it.type.fullyResolve(context.binder) }
+            for (type in actual_parameter_types) {
+                if (type.type is CType.Function && type.type.data_params == null) {
+                    appendLine("TODO(\"Creating function pointers without user data is not supported in Kotlin/Native\")")
+                    append('}')
+                    return@buildString
+                }
+            }
+
             append(getNativePackageName(context.binder.package_name))
             append('.')
             append(function.name)
             append('(')
 
             val function_data_params: Map<Int, Int> = function.parameters.mapIndexedNotNull { index, param ->
-                val actual_type: CValueType =
-                    if (param.type.type is CType.TypeDef) param.type.type.resolve(context.binder.typedefs)
-                    else param.type
+                val actual_type: CValueType = param.type.fullyResolve(context.binder)
 
-                if (actual_type.type is CType.Function) {
-                    return@mapIndexedNotNull actual_type.type.data_send_param!! to index
+                if (actual_type.type is CType.Function && actual_type.type.data_params != null) {
+                    return@mapIndexedNotNull actual_type.type.data_params.send to index
                 }
 
                 return@mapIndexedNotNull null
@@ -67,14 +81,15 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                     continue
                 }
 
-                val actual_type: CValueType =
-                    if (param.type.type is CType.TypeDef) param.type.type.resolve(context.binder.typedefs)
-                    else param.type
-
+                val actual_type: CValueType = actual_parameter_types[index]
                 val param_name: String = param_names[index]
 
                 val param_type: String? = with(context) {
-                    param.type.toKotlinTypeName(false) { createUnion(function.name, param_name, index, it) }
+                    param.type.toKotlinTypeName(
+                        false,
+                        createUnion = { createUnion(function.name, param_name, index, it) },
+                        createStruct = { createStruct(function.name, param_name, index, it) }
+                    )
                 }
                 if (param_type == null) {
                     if (function.parameters.size == 1) {
@@ -98,7 +113,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
 
                 append(param_name)
 
-                for (i in 0 until if (param.type.type == CType.Primitive.CHAR) param.type.pointer_depth - 1 else param.type.pointer_depth) {
+                if ((actual_type.type != CType.Primitive.CHAR && actual_type.pointer_depth > 1) || actual_type.pointer_depth > 2) {
                     if (param_type.last() == '?') {
                         append('?')
                     }
@@ -108,8 +123,23 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                 if (actual_type.type is CType.Struct) {
                     val native_type_alias: String = context.importNativeStruct(actual_type.type)
                     context.importFromCoordinates("kotlinx.cinterop.CPointer")
+                    if (actual_type.pointer_depth > 1) {
+                    context.importFromCoordinates("kotlinx.cinterop.CPointerVar")
+                    }
                     context.addContainerAnnotation("@file:Suppress(\"UNCHECKED_CAST\")")
-                    append(" as CPointer<$native_type_alias>")
+
+                    append(" as CPointer<")
+
+                    for (i in 0 until actual_type.pointer_depth - 1) {
+                        append("CPointerVar<")
+                    }
+
+                    append(native_type_alias)
+
+                    for (i in 0 until actual_type.pointer_depth) {
+                        append(">")
+                    }
+
                     if (param_type.last() == '?') {
                         append('?')
                     }
@@ -119,25 +149,44 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                         append('?')
                     }
 
-                    context.importFromCoordinates(Constants.ENUM_PACKAGE_NAME + '.' + Constants.NATIVE_ENUM_CONVERT_FUNCTION)
-                    append('.')
-                    append(Constants.NATIVE_ENUM_CONVERT_FUNCTION)
-                    append("()")
+                    if (actual_type.pointer_depth == 0) {
+                        context.importFromCoordinates(Constants.ENUM_PACKAGE_NAME + '.' + ENUM_CONVERT_FUNCTION_TO_NATIVE)
+                        append(".$ENUM_CONVERT_FUNCTION_TO_NATIVE()")
+                    }
+                    else {
+                        append(".castPointer()")
+                    }
                 }
-                else if (actual_type.type == CType.Primitive.CHAR && actual_type.pointer_depth >= 2) {
-                    append(" as ")
+                else if (actual_type.type == CType.Primitive.CHAR) {
+                    if (actual_type.pointer_depth >= 2) {
+                        append(" as ")
 
-                    context.importFromCoordinates("kotlinx.cinterop.CPointerVar")
-                    context.importFromCoordinates("kotlinx.cinterop.ByteVar")
+                        context.importFromCoordinates("kotlinx.cinterop.CPointerVar")
+                        context.importFromCoordinates("kotlinx.cinterop.ByteVar")
+                        context.importFromCoordinates("kotlinx.cinterop.CPointer")
+
+                        for (i in 0 until actual_type.pointer_depth - 1) {
+                            append("CPointer<")
+                        }
+                        append("CPointerVar<ByteVar>")
+                        for (i in 0 until actual_type.pointer_depth - 1) {
+                            append('>')
+                        }
+
+                        if (param_type.last() == '?') {
+                            append('?')
+                        }
+                    }
+                }
+                else if (actual_type.type is CType.Primitive && actual_type.pointer_depth > 0) {
+                    val pointed_type: String? =
+                        getCPrimitivePointedType(actual_type.type)?.also { context.importFromCoordinates("kotlinx.cinterop.$it") }
+                        ?: "*"
+
                     context.importFromCoordinates("kotlinx.cinterop.CPointer")
+                    context.addContainerAnnotation("@file:Suppress(\"UNCHECKED_CAST\")")
 
-                    for (i in 0 until actual_type.pointer_depth - 1) {
-                        append("CPointer<")
-                    }
-                    append("CPointerVar<ByteVar>")
-                    for (i in 0 until actual_type.pointer_depth - 1) {
-                        append('>')
-                    }
+                    append("?.pointer as CPointer<$pointed_type>")
 
                     if (param_type.last() == '?') {
                         append('?')
@@ -151,40 +200,26 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
 
             append(')')
 
-            if (function.return_type == CValueType(CType.Primitive.CHAR, 1)) {
-                context.importFromCoordinates("kotlinx.cinterop.toKString")
-                append("?.toKString()")
-            }
-            else if (function.return_type?.pointer_depth?.let { it > 0 } == true) {
-                val KJnaTypedPointer: String = context.importRuntimeType(RuntimeType.KJnaTypedPointer)
-
-                for (i in 0 until function.return_type.pointer_depth) {
-                    if (return_type?.last() == '?') {
-                        append('?')
-                    }
-                    // TODO
-                    append(".let { $KJnaTypedPointer.ofNativeObject(it) }")
-                }
-            }
-            else if ((function.return_type?.type as? CType.Primitive)?.isInteger() == true) {
-                context.importFromCoordinates("kotlinx.cinterop.convert")
-                if (return_type?.last() == '?') {
-                    append('?')
-                }
-                append(".convert()")
-            }
+            append(context.cToK(actual_return_type, return_type?.last() == '?'))
 
             appendLine()
             append('}')
         }
 
-    override fun implementStructConstructor(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? {
-        val native_type_alias: String = context.importNativeStruct(struct)
+    override fun implementStructConstructor(struct: CType.Struct, name: String, context: BindingGenerator.GenerationScope): String? {
+        val native_type_coordinates: String =
+            // https://github.com/JetBrains/kotlin/blob/a0aa6b11e289ec15e0467bae1d990ef38e107a7c/kotlin-native/Interop/StubGenerator/src/org/jetbrains/kotlin/native/interop/gen/StubIrDriver.kt#L74
+            if (struct.anonymous_index != null) getNativePackageName(context.binder.package_name) + ".anonymousStruct${struct.anonymous_index}"
+            else getNativePackageName(context.binder.package_name) + "." + struct.name!!
+
+        val native_type_alias: String = getNativeTypeAlias(name)
+        context.importFromCoordinates(native_type_coordinates, native_type_alias)
+
         context.importFromCoordinates("kotlinx.cinterop.ArenaBase")
         return "constructor(val $STRUCT_VALUE_PROPERTY_NAME: $native_type_alias, private val $MEM_SCOPE_PROPERTY_NAME: ArenaBase = ArenaBase())"
     }
 
-    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, scope_name: String?, context: BindingGenerator.GenerationScope): String {
         return implementField(name, index, type, type_name, struct.name, false, context)
     }
 
@@ -194,13 +229,13 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
         append(struct.name)
         append('(')
 
-        for ((index, field, _) in struct.definition.fields.withIndex()) {
+        for ((index, field, _) in struct.definition?.fields?.withIndex() ?: emptyList()) {
             append(field)
             append('=')
             append('$')
             append(field)
 
-            if (index + 1 != struct.definition.fields.size) {
+            if (index + 1 != struct.definition?.fields?.size) {
                 append(", ")
             }
         }
@@ -211,23 +246,22 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
         val native_type_coordinates: String =
             // https://github.com/JetBrains/kotlin/blob/a0aa6b11e289ec15e0467bae1d990ef38e107a7c/kotlin-native/Interop/StubGenerator/src/org/jetbrains/kotlin/native/interop/gen/StubIrDriver.kt#L74
             if (union.anonymous_index != null) getNativePackageName(context.binder.package_name) + ".anonymousStruct${union.anonymous_index}"
-            else TODO(union.toString())
+            else getNativePackageName(context.binder.package_name) + "." + union.name!!
 
         val native_type_alias: String = getNativeTypeAlias(name)
         context.importFromCoordinates(native_type_coordinates, native_type_alias)
 
         context.importFromCoordinates("kotlinx.cinterop.ArenaBase")
-
         return "constructor(val $STRUCT_VALUE_PROPERTY_NAME: $native_type_alias, private val $MEM_SCOPE_PROPERTY_NAME: ArenaBase = ArenaBase())"
     }
 
-    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String, context: BindingGenerator.GenerationScope): String {
+    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String?, context: BindingGenerator.GenerationScope): String {
         return implementField(name, index, type, if (type_name.last() == '?') type_name else (type_name + '?'), union_name, true, context)
     }
 
     override fun implementStructCompanionObject(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = buildString {
+        val T: String = struct.name ?: return null
         val native_type_alias: String = context.importNativeStruct(struct)
-        val T: String = struct.name
 
         append("companion object: ")
         append(context.importRuntimeType(RuntimeType.KJnaAllocationCompanion))
@@ -244,8 +278,8 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                 context.importFromCoordinates("kotlinx.cinterop.CPointer")
 
                 appendLine("override fun allocate(scope: $KJnaMemScope): $KJnaTypedPointer<$T> {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     appendLine("    return $KJnaTypedPointer.ofNativeObject(scope.${RuntimeType.KJnaMemScope.native_scope}.alloc<$native_type_alias>().ptr, this)")
@@ -253,8 +287,8 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                 appendLine('}')
 
                 appendLine("override fun construct(from: $KJnaPointer): $T {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.pointer}.$pointedAs())")
@@ -262,8 +296,8 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                 appendLine('}')
 
                 appendLine("override fun set(value: $T, pointer: $KJnaTypedPointer<$T>) {")
-                if (struct.isTypedef()) {
-                    appendLine("    throw IllegalStateException(\"Typedef struct cannot be accessed directly\")")
+                if (struct.isForwardDeclaration()) {
+                    appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
                     appendLine("    pointer.pointer = value.$STRUCT_VALUE_PROPERTY_NAME.ptr")
@@ -282,26 +316,53 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
 
     override fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
         buildString {
-            appendLine("fun ${enm.name}.${Constants.NATIVE_ENUM_CONVERT_FUNCTION}(): UInt =")
+            val value_type: String
+
+            // Kotlin/Native seems to generate a Kotlin enum class only for C enums with no explicitly ('=') set values
+            // This is just an educated guess though
+            if (!enm.has_explicit_value) {
+                value_type = context.importNativeName(enm.name)
+            }
+            else {
+                value_type = "UInt"
+            }
+
+            appendLine("fun ${enm.name}.$ENUM_CONVERT_FUNCTION_TO_NATIVE(): $value_type =")
             append(
                 buildString {
                     appendLine("when (this) {")
                     for ((name, value) in enm.values) {
-                        append("    ")
-                        append(enm.name)
-                        append('.')
-                        append(name)
-                        append(" -> ")
-                        appendLine(context.importNativeName(name))
+                        append("    ${enm.name}.$name -> ")
+
+                        if (!enm.has_explicit_value) {
+                            append("$value_type.$name")
+                        }
+                        else {
+                            append(context.importNativeName(name))
+                        }
+                        appendLine()
                     }
                     append('}')
                 }.prependIndent("    ")
             )
+
+            appendLine()
+            appendLine()
+
+            appendLine("fun ${enm.name}.Companion.$ENUM_CONVERT_FUNCTION_FROM_NATIVE(value: $value_type): ${enm.name} =")
+
+            val value_accessor: String =
+                if (!enm.has_explicit_value) "value.ordinal"
+                else "value.toInt()"
+            append("    ${enm.name}.entries.first { it.value == $value_accessor }")
         }
 
     companion object {
         const val STRUCT_VALUE_PROPERTY_NAME: String = "_native_value"
         const val MEM_SCOPE_PROPERTY_NAME: String = "_mem_scope"
+
+        const val ENUM_CONVERT_FUNCTION_TO_NATIVE: String = "toNative"
+        const val ENUM_CONVERT_FUNCTION_FROM_NATIVE: String = "fromNative"
 
         fun getNativePackageName(package_name: String): String =
             package_name + ".cinterop"
@@ -312,18 +373,14 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
         index: Int,
         type: CValueType,
         type_name: String,
-        scope_name: String,
+        scope_name: String?,
         in_union: Boolean,
         context: BindingGenerator.GenerationScope
     ): String = buildString {
-        var pointer_depth: Int = type.pointer_depth
-        val actual_type: CValueType =
-            if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs).also { pointer_depth += it.pointer_depth }
-            else type
-
-        if (actual_type.type == CType.Primitive.CHAR && pointer_depth > 0) {
-            pointer_depth--
-        }
+        val actual_type: CValueType = type.fullyResolve(context.binder)
+        val pointer_depth: Int =
+            if (actual_type.type == CType.Primitive.CHAR && actual_type.pointer_depth > 0) actual_type.pointer_depth - 1
+            else actual_type.pointer_depth
 
         val assignable: Boolean =
             actual_type.type !is CType.Union && (in_union || pointer_depth > 0 || actual_type.type !is CType.Struct)
@@ -332,7 +389,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
             if (assignable) "var"
             else "val"
 
-        append("actual $field_type $name: $type_name")
+        append("actual $field_type ${Constants.formatKotlinFieldName(name)}: $type_name")
 
         if (type_name == "String?") {
             context.importFromCoordinates("kotlinx.cinterop.toKString")
@@ -349,7 +406,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
 
         when (actual_type.type) {
             is CType.Union -> {
-                val union_name: String = context.getUnion(scope_name, index)
+                val union_name: String = context.getLocalClassName(scope_name!!, index)
                 appendLine(" = $union_name($STRUCT_VALUE_PROPERTY_NAME.$name)")
                 return@buildString
             }
@@ -385,7 +442,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                                 append(".let { $pointer_type.ofNativeObject(it, ")
 
                                 if (actual_type.type is CType.Struct) {
-                                    append(actual_type.type.name)
+                                    append(context.importStruct(actual_type.type.name!!))
                                     append(".Companion")
                                 }
                                 else {
@@ -408,9 +465,7 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
                             val internal_type: String? =
                                 when (actual_type.type) {
                                     is CType.Struct -> {
-                                        getNativeTypeAlias(actual_type.type.name).also { alias ->
-                                            context.importFromCoordinates(getNativePackageName(context.binder.package_name) + '.' + actual_type.type.name, alias)
-                                        }
+                                        context.importNativeStruct(actual_type.type)
                                     }
                                     CType.Primitive.CHAR -> {
                                         if (type.pointer_depth == 2) {
@@ -455,24 +510,133 @@ class BinderTargetNativeCinterop(): KJnaBinderTarget {
             append(" }")
         }
     }
+
+    private fun BindingGenerator.GenerationScope.cToK(type: CValueType?, nullable: Boolean): String =
+        buildString {
+            if (type == CValueType(CType.Primitive.CHAR, 1)) {
+                importFromCoordinates("kotlinx.cinterop.toKString")
+                append("?.toKString()")
+            }
+            else if (type?.type is CType.Function) {
+                if (type.pointer_depth != 1) {
+                    TODO(type.toString())
+                }
+
+                append(".let{{ ")
+
+                if (type.type.shape.parameters.isNotEmpty()) {
+                    for (param in 0 until type.type.shape.parameters.size) {
+                        append("p${param}")
+                        if (param + 1 != type.type.shape.parameters.size) {
+                            append(", ")
+                        }
+                    }
+
+                    append(" -> ")
+                }
+
+                importFromCoordinates("kotlinx.cinterop.invoke")
+                append("it?.invoke(")
+
+                for (param in 0 until type.type.shape.parameters.size) {
+                    append("p${param}")
+                    if (param + 1 != type.type.shape.parameters.size) {
+                        append(", ")
+                    }
+                }
+                append(")")
+
+                if (type.type.shape.return_type != null) {
+                    val actual_return_type: CValueType = type.type.shape.return_type.fullyResolve(binder)
+
+                    val return_type: String? =
+                        actual_return_type.toKotlinTypeName(
+                            true,
+                            createUnion = { createUnion(type.type.shape.name, null, null, it) },
+                            createStruct = { createStruct(type.type.shape.name, null, null, it) }
+                        )
+
+                    append(cToK(actual_return_type, return_type?.last() == '?'))
+                }
+                append(" }}")
+            }
+            else if (type?.pointer_depth?.let { it > 0 } == true) {
+                val pointer_constructor: String =
+                    if (type.type == CType.Primitive.VOID) importRuntimeType(RuntimeType.KJnaPointer)
+                    else importRuntimeType(RuntimeType.KJnaTypedPointer) + ".ofNativeObject"
+
+                for (i in 0 until type.pointer_depth) {
+                    append("?.let { $pointer_constructor(it) }")
+                }
+            }
+            else if ((type?.type as? CType.Primitive)?.isInteger() == true) {
+                importFromCoordinates("kotlinx.cinterop.convert")
+                if (nullable) {
+                    append('?')
+                }
+                append(".convert()")
+            }
+            else if (type?.type is CType.Enum) {
+                importFromCoordinates(Constants.ENUM_PACKAGE_NAME + '.' + ENUM_CONVERT_FUNCTION_FROM_NATIVE)
+                append(".let { ${type.type.name}.$ENUM_CONVERT_FUNCTION_FROM_NATIVE(it) }")
+            }
+            else if (type?.type is CType.Typedef) {
+                throw IllegalArgumentException()
+            }
+        }
+
+    private fun CValueType.kToC(): String =
+        buildString {
+
+        }
 }
 
 private fun getNativeTypeAlias(name: String): String =
-    "_native_" + name
+    "__cinterop_" + name
+
+private data class CinteropStructImport(val struct_name: String): BindingGenerator.Import {
+    override fun getImportCoordinates(binder: KJnaBinder): String {
+        val struct: CType.Struct = (binder.typedefs[struct_name]?.type?.type as? CType.Struct) ?: throw ClassCastException("${binder.typedefs[struct_name]} is not a struct ($this)")
+        if (struct.isForwardDeclaration()) {
+            return "cnames.structs.$struct_name"
+        }
+        else {
+            return KJnaBindTargetNativeCinterop.getNativePackageName(binder.package_name) + '.' + struct_name
+        }
+    }
+    override fun getName(): String = getAlias()
+    override fun getAlias(): String = getNativeTypeAlias(struct_name)
+}
 
 private fun BindingGenerator.GenerationScope.importNativeStruct(struct: CType.Struct): String {
-    val native_type_coordinates: String =
-        if (struct.isTypedef()) "cnames.structs.${struct.name}"
-        else BinderTargetNativeCinterop.getNativePackageName(binder.package_name) + '.' + struct.name
-
-    val native_type_alias: String = getNativeTypeAlias(struct.name)
-    importFromCoordinates(native_type_coordinates, native_type_alias)
-    return native_type_alias
+    val import: BindingGenerator.Import = CinteropStructImport(struct.name!!)
+    addImport(import)
+    return import.getName()
 }
 
 private fun BindingGenerator.GenerationScope.importNativeName(name: String): String {
-    val native_type_coordinates: String = BinderTargetNativeCinterop.getNativePackageName(binder.package_name) + '.' + name
+    val native_type_coordinates: String = KJnaBindTargetNativeCinterop.getNativePackageName(binder.package_name) + '.' + name
     val native_type_alias: String = getNativeTypeAlias(name)
     importFromCoordinates(native_type_coordinates, native_type_alias)
     return native_type_alias
 }
+
+private fun getCPrimitivePointedType(type: CType.Primitive): String? =
+    when (type) {
+        CType.Primitive.VOID -> null
+        CType.Primitive.CHAR -> "ByteVar"
+        CType.Primitive.U_CHAR -> "UByteVar"
+        CType.Primitive.SHORT -> "ShortVar"
+        CType.Primitive.U_SHORT -> "UShortVar"
+        CType.Primitive.INT -> "IntVar"
+        CType.Primitive.U_INT -> "UIntVar"
+        CType.Primitive.LONG,
+        CType.Primitive.LONG_LONG -> "LongVar"
+        CType.Primitive.U_LONG,
+        CType.Primitive.U_LONG_LONG -> "ULongVar"
+        CType.Primitive.FLOAT -> "FloatVar"
+        CType.Primitive.DOUBLE,
+        CType.Primitive.LONG_DOUBLE -> "DoubleVar"
+        CType.Primitive.BOOL -> "BooleanVar"
+        CType.Primitive.VALIST -> TODO()
+    }

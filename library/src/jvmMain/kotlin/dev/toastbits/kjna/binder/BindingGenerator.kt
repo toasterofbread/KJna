@@ -1,10 +1,11 @@
 package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.*
+import dev.toastbits.kjna.c.fullyResolve
 import dev.toastbits.kjna.runtime.RuntimeType
-import dev.toastbits.kjna.binder.target.KJnaBinderTarget
-import dev.toastbits.kjna.binder.target.BinderTargetDisabled
-import dev.toastbits.kjna.binder.target.BinderTargetShared
+import dev.toastbits.kjna.binder.target.KJnaBindTarget
+import dev.toastbits.kjna.binder.target.KJnaBindTargetDisabled
+import dev.toastbits.kjna.binder.target.KJnaBindTargetShared
 import kotlin.reflect.KClass
 import kotlin.contracts.contract
 import kotlin.contracts.InvocationKind
@@ -12,15 +13,20 @@ import kotlin.contracts.InvocationKind
 class BindingGenerator(
     val binder: KJnaBinder,
     var getStructImport: (String) -> String,
+    var getUnionImport: (String) -> String,
     var getEnumImport: (String) -> String
 ) {
-    fun buildKotlinFile(target: KJnaBinderTarget, pkg: String, buildContent: StringBuilderGenerationScope.() -> Unit) {
-        val imports: MutableList<Pair<String, String?>> = mutableListOf()
-        val unions: MutableMap<String, String> = mutableMapOf()
+    fun buildKotlinFile(
+        target: KJnaBindTarget,
+        package_coordinates: String,
+        buildContent: StringBuilderGenerationScope.() -> Unit
+    ) {
+        val imports: MutableList<Import> = mutableListOf()
+        val local_classes: MutableMap<String, String> = mutableMapOf()
         val annotations: MutableList<String> = mutableListOf()
 
         val scope: StringBuilderGenerationScope =
-            object : StringBuilderGenerationScope(target, imports, unions, annotations) {
+            object : StringBuilderGenerationScope(target, imports, local_classes, annotations) {
                 override fun build(): String {
                     val content: String = this.toString()
                     return buildString {
@@ -30,18 +36,18 @@ class BindingGenerator(
                             }
                             appendLine()
                         }
-                        appendLine("package $pkg")
+                        appendLine("package $package_coordinates")
 
                         appendLine()
-                        append(generateImportBlock(imports))
+                        append(generateImportBlock(imports, binder))
 
                         append(content)
 
                         appendLine()
 
-                        if (unions.isNotEmpty()) {
+                        if (local_classes.isNotEmpty()) {
                             appendLine()
-                            for ((_, union_content) in unions) {
+                            for ((_, union_content) in local_classes) {
                                 appendLine(union_content)
                             }
                         }
@@ -52,12 +58,17 @@ class BindingGenerator(
         buildContent(scope)
     }
 
+    fun unhandledGenerationScope(target: KJnaBindTarget, generate: GenerationScope.() -> Unit) {
+        val scope: GenerationScope = GenerationScope(target, mutableListOf(), mutableMapOf(), mutableListOf())
+        generate(scope)
+    }
+
     inner abstract class StringBuilderGenerationScope(
-        target: KJnaBinderTarget,
-        imports: MutableList<Pair<String, String?>>,
-        unions: MutableMap<String, String>,
+        target: KJnaBindTarget,
+        imports: MutableList<Import>,
+        local_classes: MutableMap<String, String>,
         annotations: MutableList<String>
-    ): GenerationScope(target, imports, unions, annotations) {
+    ): GenerationScope(target, imports, local_classes, annotations) {
         private val string: StringBuilder = StringBuilder()
 
         override fun toString(): String = string.toString()
@@ -70,19 +81,22 @@ class BindingGenerator(
     }
 
     inner open class GenerationScope(
-        val target: KJnaBinderTarget,
-        private val imports: MutableList<Pair<String, String?>>,
-        private val unions: MutableMap<String, String>,
+        val target: KJnaBindTarget,
+        private val imports: MutableList<Import>,
+        private val local_classes: MutableMap<String, String>,
         private val annotations: MutableList<String>
     ) {
         val binder: KJnaBinder get() = this@BindingGenerator.binder
 
+        fun addImport(import: Import) {
+            if (!imports.contains(import)) {
+                imports.add(import)
+            }
+        }
+
         fun importFromCoordinates(coordinates: String, alias: String? = null) {
             check(!coordinates.contains(" ")) { coordinates }
-
-            if (imports.none { it.first == coordinates }) {
-                imports.add(Pair(coordinates, alias))
-            }
+            addImport(Import.Coordinates(coordinates, alias))
         }
 
         fun addContainerAnnotation(annotation: String) {
@@ -123,7 +137,7 @@ class BindingGenerator(
                     appendLine()
                 }
 
-                for (function in header.info.functions) {
+                for ((name, function) in header.info.functions) {
                     try {
                         val function_header: String = getKotlinFunctionHeader(function)
                         appendLine(target.implementFunction(function, function_header, header, this@GenerationScope).prependIndent("    "))
@@ -148,8 +162,8 @@ class BindingGenerator(
 
                         appendLine(
                             when (target) {
-                                is BinderTargetShared -> "fun isAvailable(): Boolean"
-                                is BinderTargetDisabled -> "actual fun isAvailable(): Boolean = false"
+                                is KJnaBindTargetShared -> "fun isAvailable(): Boolean"
+                                is KJnaBindTargetDisabled -> "actual fun isAvailable(): Boolean = false"
                                 else -> "actual fun isAvailable(): Boolean = true"
                             }.prependIndent("    ")
                         )
@@ -166,7 +180,7 @@ class BindingGenerator(
             val used_param_names: MutableList<String> = mutableListOf()
             val function_data_param_indices: List<Int> = function.parameters.mapNotNull { param ->
                 if (param.type.type is CType.Function) {
-                    return@mapNotNull param.type.type.data_send_param
+                    return@mapNotNull param.type.type.data_params?.send
                 }
                 return@mapNotNull null
             }
@@ -177,7 +191,12 @@ class BindingGenerator(
                 val param_name: String = getFunctionParameterName(param.name, index, used_param_names)
                 used_param_names.add(param_name)
 
-                val param_type: String? = param.type.toKotlinTypeName(false) { createUnion(function.name, param_name, index, it) }
+                val param_type: String? =
+                    param.type.toKotlinTypeName(
+                        false,
+                        createUnion = { createUnion(function.name, param_name, index, it) },
+                        createStruct = { createStruct(function.name, param_name, index, it) }
+                    )
                 if (param_type == null) {
                     if (params.size == 1) {
                         break
@@ -197,7 +216,13 @@ class BindingGenerator(
 
             header.append(")")
 
-            val return_type: String = function.return_type.toKotlinTypeName(true) { createUnion(function.name, null, null, it) }!!
+            val return_type: String =
+                function.return_type.toKotlinTypeName(
+                    true,
+                    createUnion = { createUnion(function.name, null, null, it) },
+                    createStruct = { createStruct(function.name, null, null, it) }
+                )!!
+
             if (return_type != "Unit") {
                 header.append(": ")
                 header.append(return_type)
@@ -212,33 +237,27 @@ class BindingGenerator(
 
         fun CValueType?.toKotlinTypeName(
             is_return_type: Boolean,
-            createUnion: (CType.Union) -> String
+            createUnion: (CType.Union) -> String,
+            createStruct: (CType.Struct) -> String
         ): String? {
             if (this == null) {
                 return "Unit"
             }
 
-            val actual_type: CValueType =
-                if (type is CType.TypeDef) type.resolve(binder.typedefs).let { it.copy(pointer_depth = pointer_depth + it.pointer_depth) }
-                else this
+            val actual_type: CValueType = fullyResolve(binder)
 
             var (type: String?, pointer_depth: Int) =
-                type.toKotlinType(pointer_depth, createUnion = createUnion)
+                type.toKotlinType(pointer_depth, is_return_type = is_return_type, createUnion = createUnion, createStruct = createStruct)
 
             if (actual_type.type is CType.Function) {
-                if (actual_type.pointer_depth != 1) {
-                    TODO(actual_type.toString())
-                }
-
                 return type!!
             }
 
-            if (type == null) {
+            if (type == null && pointer_depth == 0) {
                 if (is_return_type) {
                     return "Unit"
                 }
-
-                if (pointer_depth == 0) {
+                else {
                     return null
                 }
             }
@@ -262,7 +281,7 @@ class BindingGenerator(
             return type!!
         }
 
-        private fun CType.toKotlinType(pointer_depth: Int, createUnion: (CType.Union) -> String): Pair<String?, Int> {
+        private fun CType.toKotlinType(pointer_depth: Int, createUnion: (CType.Union) -> String, createStruct: (CType.Struct) -> String, is_return_type: Boolean = false): Pair<String?, Int> {
             val kotlin_type: String?
             var pointer_depth: Int = pointer_depth
 
@@ -292,25 +311,27 @@ class BindingGenerator(
                         CType.Primitive.DOUBLE,
                         CType.Primitive.LONG_DOUBLE -> kotlin_type = "Double"
                         CType.Primitive.BOOL -> kotlin_type = "Boolean"
+                        CType.Primitive.VALIST -> kotlin_type = importRuntimeType(RuntimeType.KJnaVarargList)
                     }
 
-                is CType.TypeDef -> {
+                is CType.Typedef -> {
                     val resolved_type: CValueType = resolve(binder.typedefs)
 
                     when (resolved_type.type) {
                         is CType.Struct -> {
-                            importStruct(resolved_type.type.name, name)
-                            kotlin_type = name
+                            kotlin_type = importStruct(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
                             pointer_depth += resolved_type.pointer_depth
                         }
                         is CType.Enum -> {
-                            importEnum(resolved_type.type.name, name)
-                            kotlin_type = name
+                            kotlin_type = importEnum(resolved_type.type.name)
                             pointer_depth += resolved_type.pointer_depth
                         }
-                        is CType.Union -> throw IllegalStateException(resolved_type.toString())
+                        is CType.Union -> {
+                            kotlin_type = importUnion(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
+                            pointer_depth += resolved_type.pointer_depth
+                        }
                         else -> {
-                            resolved_type.type.toKotlinType(pointer_depth + resolved_type.pointer_depth, { throw IllegalStateException("Union") }).apply {
+                            resolved_type.type.toKotlinType(pointer_depth + resolved_type.pointer_depth, is_return_type = is_return_type, createUnion = { throw IllegalStateException("Union $it") }, createStruct = { throw IllegalStateException("Struct $it") }).apply {
                                 kotlin_type = first
                                 pointer_depth = second
                             }
@@ -319,8 +340,7 @@ class BindingGenerator(
                 }
 
                 is CType.Struct -> {
-                    importStruct(name)
-                    kotlin_type = name
+                    kotlin_type = name?.let { importStruct(name) } ?: createStruct(this)
                 }
 
                 is CType.Enum -> {
@@ -334,13 +354,20 @@ class BindingGenerator(
 
                 is CType.Function -> {
                     kotlin_type = buildString {
+                        if (is_return_type && pointer_depth > 1) {
+                            val KJnaTypedPointer: String = importRuntimeType(RuntimeType.KJnaTypedPointer)
+                            for (i in 0 until pointer_depth - 1) {
+                                append("$KJnaTypedPointer<")
+                            }
+                        }
+
                         append('(')
                         for ((index, param) in shape.parameters.withIndex()) {
                             if (param.name != null) {
                                 append(param.name)
                                 append(": ")
                             }
-                            append(param.type.toKotlinTypeName(false, createUnion))
+                            append(param.type.toKotlinTypeName(false, createUnion, createStruct))
 
                             if (index + 1 != shape.parameters.size) {
                                 append(", ")
@@ -348,8 +375,18 @@ class BindingGenerator(
                         }
 
                         append(") -> ")
-                        append(shape.return_type.toKotlinTypeName(true, createUnion))
+                        append(shape.return_type.toKotlinTypeName(true, createUnion, createStruct))
+
+                        if (is_return_type) {
+                            for (i in 0 until pointer_depth - 1) {
+                                append(">")
+                            }
+                        }
                     }
+                }
+
+                is CType.Array -> {
+                    throw IllegalStateException(this.toString())
                 }
             }
 
@@ -361,25 +398,51 @@ class BindingGenerator(
             return alias ?: struct_name
         }
 
-        private fun importEnum(enum_name: String, alias: String? = null) {
+        private fun importEnum(enum_name: String, alias: String? = null): String {
             importFromCoordinates(getEnumImport(enum_name), alias)
+            return alias ?: enum_name
+        }
+
+        private fun importUnion(union_name: String, alias: String? = null): String {
+            importFromCoordinates(getUnionImport(union_name), alias)
+            return alias ?: union_name
         }
 
         fun createUnion(scope_name: String, parameter_name: String?, parameter_index: Int?, union: CType.Union): String {
-            val name: String = getUnion(scope_name, parameter_index)
-            check(!unions.contains(name)) { "Union name collision '$name'" }
+            val name: String = getLocalClassName(scope_name, parameter_index)
+            check(!local_classes.contains(name)) { "Union name collision '$name'" }
 
-            unions[name] = generateUnion(name, union, parameter_name, scope_name, target)
+            local_classes[name] = generateUnion(name, union, parameter_name, scope_name, target)
             return name
         }
 
-        fun getUnion(scope_name: String, parameter_index: Int?): String {
+        fun createStruct(scope_name: String, parameter_name: String?, parameter_index: Int?, struct: CType.Struct): String {
+            val name: String = getLocalClassName(scope_name, parameter_index)
+            check(!local_classes.contains(name)) { "Struct name collision '$name'" }
+
+            local_classes[name] = generateStructBody(name, struct, target, scope_name)
+            return name
+        }
+
+        fun getLocalClassName(scope_name: String, parameter_index: Int?): String {
             return scope_name + "_union_" + parameter_index?.toString().orEmpty()
         }
 
         fun importRuntimeType(type: RuntimeType): String {
             importFromCoordinates(type.coordinates)
             return type.name
+        }
+    }
+
+    interface Import {
+        fun getImportCoordinates(binder: KJnaBinder): String
+        fun getName(): String
+        fun getAlias(): String? = null
+
+        data class Coordinates(val import_coordinates: String, val import_alias: String? = null): Import {
+            override fun getImportCoordinates(binder: KJnaBinder): String = import_coordinates
+            override fun getName(): String = import_alias ?: import_coordinates.split(".").last()
+            override fun getAlias(): String? = import_alias
         }
     }
 }

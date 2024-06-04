@@ -1,10 +1,10 @@
 package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CType
-import dev.toastbits.kjna.binder.target.KJnaBinderTarget
+import dev.toastbits.kjna.binder.target.KJnaBindTarget
 import withIndex
 
-fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Union, union_field_name: String?, scope_name: String, target: KJnaBinderTarget): String =
+fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Union, union_field_name: String?, scope_name: String?, target: KJnaBindTarget): String =
     buildString {
         for (modifier in target.getClassModifiers()) {
             append(modifier)
@@ -19,11 +19,17 @@ fun BindingGenerator.GenerationScope.generateUnion(name: String, union: CType.Un
             append(union_constructor)
         }
 
-        if (union.values.isNotEmpty()) {
+        if (union.values?.isNotEmpty() == true) {
             appendLine(" {")
 
             for ((index, field, type) in union.values.withIndex()) {
-                val type_name: String? = type.toKotlinTypeName(false) { createUnion(name, field, index, it) }
+                val type_name: String? =
+                    type.toKotlinTypeName(
+                        false,
+                        createUnion = { createUnion(name, field, index, it) },
+                        createStruct = { createStruct(name, field, index, it) }
+                    )
+
                 if (type_name == null) {
                     throw NullPointerException(union.toString())
                 }
