@@ -9,7 +9,7 @@ import dev.toastbits.kjna.binder.KJnaBinder
 sealed interface KJnaBindTarget {
     fun getClassModifiers(): List<String> = emptyList()
 
-    fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String
+    fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String
 
     fun implementHeaderConstructor(context: BindingGenerator.GenerationScope): String? = null
     fun implementHeaderInitialiser(all_structs: List<CType.Struct>?, context: BindingGenerator.GenerationScope): String? = null

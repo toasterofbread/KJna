@@ -9,15 +9,16 @@ import dev.toastbits.kjna.binder.target.KJnaBindTarget
 
 open class KJnaBinder(
     val package_name: String,
+    val package_info: CHeaderParser.PackageInfo,
     val headers: List<Header>,
-    val typedefs: MutableMap<String, CTypedef>
+    val typedefs: MutableMap<String, CTypedef>,
+    val anonymous_struct_indices: Map<Int, Int> = emptyMap()
 ) {
     open fun shouldIncludeStructField(name: String, type: CType, struct: CType.Struct): Boolean = true
 
     data class Header(
-        val class_name: String,
-        val package_name: String,
-        val info: CHeaderParser.HeaderInfo
+        val absolute_path: String,
+        val class_name: String
     )
 
     data class BindingFile(
@@ -33,7 +34,7 @@ open class KJnaBinder(
     fun generateBindings(targets: Collection<KJnaBindTarget>): GeneratedBindings {
         val files: MutableList<MutableList<BindingFile>> = targets.map { mutableListOf<BindingFile>() }.toMutableList()
 
-        val used_structs: MutableList<String> = headers.flatMap { it.info.structs.keys }.toMutableList()
+        val used_structs: MutableList<String> = package_info.structs.keys.toMutableList()
         val used_enums: MutableList<String> = mutableListOf()
         val used_unions: MutableList<String> = mutableListOf()
 
@@ -44,6 +45,7 @@ open class KJnaBinder(
         val generator: BindingGenerator =
             BindingGenerator(
                 this,
+                anonymous_struct_indices = anonymous_struct_indices,
                 getStructImport = { struct_name ->
                     if (!used_structs.contains(struct_name)) {
                         check(!import_finished) { struct_name }
@@ -130,12 +132,7 @@ open class KJnaBinder(
                         appendLine("// This is a dummy implementation generated for an unresolved struct")
                     }
 
-                    try {
-                        append(generateStructBody(struct_name, struct, target, includeField = { name, type -> shouldIncludeStructField(name, type, struct) }))
-                    }
-                    catch (e: Throwable) {
-                        throw RuntimeException("generateStructBody failed ($target, $struct)")
-                    }
+                    append(generateStructBody(struct_name, struct, target, includeField = { name, type -> shouldIncludeStructField(name, type, struct) }))
 
                     files[target_index].add(BindingFile(Constants.STRUCT_PACKAGE_NAME + '.' + struct_name, build()))
                 }
@@ -146,30 +143,26 @@ open class KJnaBinder(
             for (union_name in used_unions) {
                 val union: CType.Union = typedefs[union_name]!!.type.type as CType.Union
                 generator.buildKotlinFile(target, Constants.UNION_PACKAGE_NAME) {
-                    val content: String? = generateUnion(union_name, union, null, union_name, target)
-                    if (content != null) {
-                        append(content)
-                        files[target_index].add(BindingFile(Constants.UNION_PACKAGE_NAME + '.' + union_name, build()))
-                    }
+                    val content: String = generateUnion(union_name, union, null, union_name, target) ?: return@buildKotlinFile
+                    append(content)
+                    files[target_index].add(BindingFile(Constants.UNION_PACKAGE_NAME + '.' + union_name, build()))
                 }
             }
 
             for (enm in used_enums) {
                 val def: CType.Enum = (typedefs[enm] ?: throw NullPointerException("$enm ${typedefs["cairo_dither_t"]}")).type.type as CType.Enum
                 generator.buildKotlinFile(target, Constants.ENUM_PACKAGE_NAME) {
-                    val content: String? = target.implementEnumFileContent(def, this)
-                    if (content != null) {
-                        append(content)
-                        files[target_index].add(BindingFile(Constants.ENUM_PACKAGE_NAME + '.' + def.name, build()))
-                    }
+                    val content: String = target.implementEnumFileContent(def, this) ?: return@buildKotlinFile
+                    append(content)
+                    files[target_index].add(BindingFile(Constants.ENUM_PACKAGE_NAME + '.' + def.name, build()))
                 }
             }
 
             val all_structs: List<CType.Struct> = used_structs.mapNotNull { typedefs[it]?.type?.type as? CType.Struct }
             for (header in headers) {
-                generator.buildKotlinFile(target, header.package_name) {
+                generator.buildKotlinFile(target, package_name) {
                     append(generateHeaderFileContent(header, all_structs))
-                    files[target_index].add(BindingFile(header.package_name + '.' + header.class_name, build()))
+                    files[target_index].add(BindingFile(package_name + '.' + header.class_name, build()))
                 }
             }
         }

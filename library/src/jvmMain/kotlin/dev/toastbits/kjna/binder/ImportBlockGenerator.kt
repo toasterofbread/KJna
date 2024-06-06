@@ -1,6 +1,10 @@
 package dev.toastbits.kjna.binder
 
-fun generateImportBlock(imports: List<BindingGenerator.Import>, binder: KJnaBinder): String = buildString {
+fun generateImportBlock(
+    imports: List<BindingGenerator.Import>,
+    binder: KJnaBinder,
+    anonymous_struct_indices: Map<Int, Int> = emptyMap()
+): String = buildString {
     if (imports.isEmpty()) {
         return@buildString
     }
@@ -11,7 +15,21 @@ fun generateImportBlock(imports: List<BindingGenerator.Import>, binder: KJnaBind
         return@map coordinates to alias
     }
 
-    for ((coordinates, alias) in import_coordinates.distinct().sortedBy { it.first }) {
+    val anonymous_struct_prefix: String = binder.package_name + ".cinterop.anonymousStruct"
+
+    for ((_coordinates, alias) in import_coordinates.distinct().sortedBy { it.first }) {
+        var coordinates: String = _coordinates
+
+        if (coordinates.startsWith(anonymous_struct_prefix)) {
+            val index: Int? = coordinates.drop(anonymous_struct_prefix.length).toIntOrNull()
+            if (index != null) {
+                val replacement_index: Int? = anonymous_struct_indices[index]
+                if (replacement_index != null) {
+                    coordinates = anonymous_struct_prefix + replacement_index.toString()
+                }
+            }
+        }
+
         append("import $coordinates")
 
         if (alias != null) {

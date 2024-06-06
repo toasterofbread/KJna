@@ -14,7 +14,8 @@ class BindingGenerator(
     val binder: KJnaBinder,
     var getStructImport: (String) -> String,
     var getUnionImport: (String) -> String,
-    var getEnumImport: (String) -> String
+    var getEnumImport: (String) -> String,
+    val anonymous_struct_indices: Map<Int, Int> = emptyMap()
 ) {
     fun buildKotlinFile(
         target: KJnaBindTarget,
@@ -39,15 +40,15 @@ class BindingGenerator(
                         appendLine("package $package_coordinates")
 
                         appendLine()
-                        append(generateImportBlock(imports, binder))
+                        append(generateImportBlock(imports, binder, anonymous_struct_indices))
 
                         append(content)
 
                         appendLine()
 
                         if (local_classes.isNotEmpty()) {
-                            appendLine()
                             for ((_, union_content) in local_classes) {
+                                appendLine()
                                 appendLine(union_content)
                             }
                         }
@@ -137,10 +138,10 @@ class BindingGenerator(
                     appendLine()
                 }
 
-                for ((name, function) in header.info.functions) {
+                for ((name, function) in binder.package_info.headers[header.absolute_path]!!.functions) {
                     try {
                         val function_header: String = getKotlinFunctionHeader(function)
-                        appendLine(target.implementFunction(function, function_header, header, this@GenerationScope).prependIndent("    "))
+                        appendLine(target.implementFunction(function, function_header, header.class_name, this@GenerationScope).prependIndent("    "))
                     }
                     catch (e: Throwable) {
                         throw RuntimeException("Generating function $function in $header failed", e)
@@ -227,7 +228,7 @@ class BindingGenerator(
                 header.append(": ")
                 header.append(return_type)
 
-                if (function.return_type?.type == CType.Primitive.CHAR && header.last() != '?') {
+                if (function.return_type?.type?.isChar() == true && header.last() != '?') {
                     header.append('?')
                 }
             }
@@ -285,109 +286,119 @@ class BindingGenerator(
             val kotlin_type: String?
             var pointer_depth: Int = pointer_depth
 
-            when (this) {
-                is CType.Primitive ->
-                    when (this) {
-                        CType.Primitive.VOID -> kotlin_type = null
-                        CType.Primitive.CHAR,
-                        CType.Primitive.U_CHAR -> {
-                            if (pointer_depth > 0) {
-                                kotlin_type = "String"
-                                pointer_depth--
+            try {
+                when (this) {
+                    is CType.Primitive ->
+                        when (this) {
+                            CType.Primitive.VOID -> kotlin_type = null
+                            CType.Primitive.U_CHAR -> kotlin_type = "Char"
+                            CType.Primitive.CHAR -> {
+                                if (pointer_depth > 0) {
+                                    kotlin_type = "String"
+                                    pointer_depth--
+                                }
+                                else {
+                                    kotlin_type = "Char"
+                                }
                             }
-                            else {
-                                kotlin_type = "Char"
+                            CType.Primitive.SHORT -> kotlin_type = "Short"
+                            CType.Primitive.U_SHORT -> kotlin_type = "UShort"
+                            CType.Primitive.INT -> kotlin_type = "Int"
+                            CType.Primitive.U_INT -> kotlin_type = "UInt"
+                            CType.Primitive.LONG,
+                            CType.Primitive.LONG_LONG -> kotlin_type = "Long"
+                            CType.Primitive.U_LONG,
+                            CType.Primitive.U_LONG_LONG -> kotlin_type = "ULong"
+                            CType.Primitive.FLOAT -> kotlin_type = "Float"
+                            CType.Primitive.DOUBLE,
+                            CType.Primitive.LONG_DOUBLE -> kotlin_type = "Double"
+                            CType.Primitive.BOOL -> kotlin_type = "Boolean"
+                            CType.Primitive.VALIST -> kotlin_type = importRuntimeType(RuntimeType.KJnaVarargList)
+                        }
+
+                    is CType.Typedef -> {
+                        val resolved_type: CValueType = resolve(binder.typedefs)
+
+                        when (resolved_type.type) {
+                            is CType.Struct -> {
+                                kotlin_type = importStruct(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
+                                pointer_depth += resolved_type.pointer_depth
                             }
-                        }
-                        CType.Primitive.SHORT -> kotlin_type = "Short"
-                        CType.Primitive.U_SHORT -> kotlin_type = "UShort"
-                        CType.Primitive.INT -> kotlin_type = "Int"
-                        CType.Primitive.U_INT -> kotlin_type = "UInt"
-                        CType.Primitive.LONG,
-                        CType.Primitive.LONG_LONG -> kotlin_type = "Long"
-                        CType.Primitive.U_LONG,
-                        CType.Primitive.U_LONG_LONG -> kotlin_type = "ULong"
-                        CType.Primitive.FLOAT -> kotlin_type = "Float"
-                        CType.Primitive.DOUBLE,
-                        CType.Primitive.LONG_DOUBLE -> kotlin_type = "Double"
-                        CType.Primitive.BOOL -> kotlin_type = "Boolean"
-                        CType.Primitive.VALIST -> kotlin_type = importRuntimeType(RuntimeType.KJnaVarargList)
-                    }
-
-                is CType.Typedef -> {
-                    val resolved_type: CValueType = resolve(binder.typedefs)
-
-                    when (resolved_type.type) {
-                        is CType.Struct -> {
-                            kotlin_type = importStruct(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
-                            pointer_depth += resolved_type.pointer_depth
-                        }
-                        is CType.Enum -> {
-                            kotlin_type = importEnum(resolved_type.type.name)
-                            pointer_depth += resolved_type.pointer_depth
-                        }
-                        is CType.Union -> {
-                            kotlin_type = importUnion(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
-                            pointer_depth += resolved_type.pointer_depth
-                        }
-                        else -> {
-                            resolved_type.type.toKotlinType(pointer_depth + resolved_type.pointer_depth, is_return_type = is_return_type, createUnion = { throw IllegalStateException("Union $it") }, createStruct = { throw IllegalStateException("Struct $it") }).apply {
-                                kotlin_type = first
-                                pointer_depth = second
+                            is CType.Enum -> {
+                                kotlin_type = importEnum(resolved_type.type.name)
+                                pointer_depth += resolved_type.pointer_depth
                             }
-                        }
-                    }
-                }
-
-                is CType.Struct -> {
-                    kotlin_type = name?.let { importStruct(name) } ?: createStruct(this)
-                }
-
-                is CType.Enum -> {
-                    importEnum(name)
-                    kotlin_type = name
-                }
-
-                is CType.Union -> {
-                    kotlin_type = createUnion(this)
-                }
-
-                is CType.Function -> {
-                    kotlin_type = buildString {
-                        if (is_return_type && pointer_depth > 1) {
-                            val KJnaTypedPointer: String = importRuntimeType(RuntimeType.KJnaTypedPointer)
-                            for (i in 0 until pointer_depth - 1) {
-                                append("$KJnaTypedPointer<")
+                            is CType.Union -> {
+                                kotlin_type = importUnion(resolved_type.type.name ?: throw NullPointerException("$this $resolved_type"))
+                                pointer_depth += resolved_type.pointer_depth
                             }
-                        }
-
-                        append('(')
-                        for ((index, param) in shape.parameters.withIndex()) {
-                            if (param.name != null) {
-                                append(param.name)
-                                append(": ")
-                            }
-                            append(param.type.toKotlinTypeName(false, createUnion, createStruct))
-
-                            if (index + 1 != shape.parameters.size) {
-                                append(", ")
-                            }
-                        }
-
-                        append(") -> ")
-                        append(shape.return_type.toKotlinTypeName(true, createUnion, createStruct))
-
-                        if (is_return_type) {
-                            for (i in 0 until pointer_depth - 1) {
-                                append(">")
+                            else -> {
+                                resolved_type.type.toKotlinType(
+                                    pointer_depth + resolved_type.pointer_depth,
+                                    is_return_type = is_return_type,
+                                    createUnion = { throw IllegalStateException("Union $it") },
+                                    createStruct = { throw IllegalStateException("Struct $it") }
+                                ).apply {
+                                    kotlin_type = first
+                                    pointer_depth = second
+                                }
                             }
                         }
                     }
-                }
 
-                is CType.Array -> {
-                    throw IllegalStateException(this.toString())
+                    is CType.Struct -> {
+                        kotlin_type = name?.let { importStruct(name) } ?: createStruct(this)
+                    }
+
+                    is CType.Enum -> {
+                        importEnum(name)
+                        kotlin_type = name
+                    }
+
+                    is CType.Union -> {
+                        kotlin_type = createUnion(this)
+                    }
+
+                    is CType.Function -> {
+                        kotlin_type = buildString {
+                            if (is_return_type && pointer_depth > 1) {
+                                val KJnaTypedPointer: String = importRuntimeType(RuntimeType.KJnaTypedPointer)
+                                for (i in 0 until pointer_depth - 1) {
+                                    append("$KJnaTypedPointer<")
+                                }
+                            }
+
+                            append('(')
+                            for ((index, param) in shape.parameters.withIndex()) {
+                                if (param.name != null) {
+                                    append(param.name)
+                                    append(": ")
+                                }
+                                append(param.type.toKotlinTypeName(false, createUnion, createStruct))
+
+                                if (index + 1 != shape.parameters.size) {
+                                    append(", ")
+                                }
+                            }
+
+                            append(") -> ")
+                            append(shape.return_type.toKotlinTypeName(true, createUnion, createStruct))
+
+                            if (is_return_type) {
+                                for (i in 0 until pointer_depth - 1) {
+                                    append(">")
+                                }
+                            }
+                        }
+                    }
+
+                    is CType.Array -> {
+                        kotlin_type = "Array<${type.toKotlinTypeName(false, createUnion, createStruct)}>"
+                    }
                 }
+            }
+            catch (e: Throwable) {
+                throw RuntimeException("toKotlinType failed ($this $pointer_depth)", e)
             }
 
             return Pair(kotlin_type, pointer_depth)

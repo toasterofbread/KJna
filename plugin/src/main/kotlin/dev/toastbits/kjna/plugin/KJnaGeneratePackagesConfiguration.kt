@@ -59,9 +59,9 @@ data class KJnaGeneratePackagesConfiguration(
          * @param parse_children if the path a header file included during the parsing of this header ends with one of these strings, a binding class will be generated for it.
          */
         fun addHeader(
-            header_path: String, 
-            class_name: String, 
-            parse_only: Boolean = false, 
+            header_path: String,
+            class_name: String,
+            parse_only: Boolean = false,
             preprocess: Boolean = true,
             parse_children: List<String> = emptyList()
         ) {
@@ -86,7 +86,8 @@ data class KJnaGeneratePackagesConfiguration(
 
     data class PackageOverrides(
         private var typedef_types: Map<String, String> = emptyMap(),
-        private var struct_field_ignored_types: List<String> = emptyList()
+        private var struct_field_ignored_types: List<String> = emptyList(),
+        var anonymous_struct_indices: Map<Int, Int> = emptyMap()
     ): Serializable {
 
         /**
@@ -97,7 +98,7 @@ data class KJnaGeneratePackagesConfiguration(
          * @param pointer depth of [type].
          */
         fun overrideTypedefType(name: String, type: CType, pointer_depth: Int = 0) {
-            typedef_types = typedef_types.toMutableMap().also { it[name] = json.encodeToString(CValueType(type, pointer_depth)) }
+            typedef_types = typedef_types.toMutableMap().apply { put(name, json.encodeToString(CValueType(type, pointer_depth))) }
         }
 
         /**
@@ -107,6 +108,16 @@ data class KJnaGeneratePackagesConfiguration(
          */
         fun ignoreStructFieldsWithType(type: CType) {
             struct_field_ignored_types = struct_field_ignored_types + listOf(json.encodeToString(type))
+        }
+
+        /**
+         * Kotlin/Native anonymous structs and unions imported from KJna binding code as 'anonymousStruct<from_index>' will instead be imported as 'anonymousStruct<to_index>'.
+         *
+         * @param from_index the index of the anonymous struct import to be replaced.
+         * @param to_index the index of the anonymous struct to be imported instead of [from_index].
+         */
+        fun overrideAnonymousStructIndex(from_index: Int, to_index: Int) {
+            anonymous_struct_indices = anonymous_struct_indices.toMutableMap().apply{ put(from_index, to_index) }
         }
 
         companion object {

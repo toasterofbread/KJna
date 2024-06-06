@@ -7,6 +7,7 @@ open class RuntimeType(
 ) {
     object KJnaDisabledPackageAccessException: RuntimeType("KJnaDisabledPackageAccessException", "dev.toastbits.kjna.runtime.KJnaDisabledPackageAccessException")
     object KJnaMemScope: RuntimeType("KJnaMemScope", "dev.toastbits.kjna.runtime.KJnaMemScope") {
+        val confined: String = "confined"
         val native_scope: String = "native_scope"
         val jvm_arena: String = "jvm_arena"
     }
@@ -18,6 +19,8 @@ open class RuntimeType(
         val registerAllocationCompanion: String = "registerAllocationCompanion"
     }
     object KJnaVarargList: RuntimeType("KJnaVarargList", "dev.toastbits.kjna.runtime.KJnaVarargList")
+    
+    object convert: RuntimeType("convert", "dev.toastbits.kjna.runtime.convert")
 
     // Native
     object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")

@@ -117,35 +117,37 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
         )
 
         val parser: CHeaderParser = CHeaderParser((include_dirs + parser_include_dirs).distinct())
-        for (pkg in packages.packages) {
+        val parsed_packages: List<CHeaderParser.PackageInfo> = packages.packages.map { pkg ->
             println("Parsing headers for $pkg...")
 
             val package_scope: PackageGenerationScope = PackageGenerationScope(parser)
-            parser.parse(pkg.headers.mapNotNull { if (!it.preprocess) null else it.header_path }, package_scope, pkg.include_dirs, pkg.parser_ignore_headers)
+            return@map parser.parsePackage(
+                headers = pkg.headers.mapNotNull { if (!it.preprocess) null else it.header_path },
+                package_scope = package_scope,
+                extra_include_dirs = pkg.include_dirs,
+                ignore_headers = pkg.parser_ignore_headers
+            )
         }
 
         val package_bindings: List<KJnaBinder.GeneratedBindings> =
-            packages.packages.map { pkg ->
+            packages.packages.mapIndexed { index, pkg ->
                 check(!pkg.disabled_targets.contains(KJnaBuildTarget.SHARED)) { "Shared (common) target cannot be disabled on package $pkg" }
+                val package_info: CHeaderParser.PackageInfo = parsed_packages[index]
 
                 val header_bindings: List<KJnaBinder.Header> =
                     pkg.headers.map { header ->
-                        KJnaBinder.Header(
-                            class_name = header.class_name,
-                            package_name = pkg.package_name,
-                            info = parser.getHeaderByInclude(header.header_path)
-                        )
+                        KJnaBinder.Header(class_name = header.class_name, absolute_path = parser.getHeaderFile(header.header_path).absolutePath)
                     }
 
                 val struct_field_ignored_types: List<CType> = KJnaGeneratePackagesConfiguration.PackageOverrides.getStructFieldIgnoredTyped(pkg.overrides)
 
-                val typedefs: MutableMap<String, CTypedef> = parser.getAllTypedefsMap().toMutableMap()
+                val typedefs: MutableMap<String, CTypedef> = package_info.typedefs.toMutableMap()
                 for ((typedef, type) in KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)) {
                     typedefs[typedef] = CTypedef(typedef, type)
                 }
 
                 val binder: KJnaBinder =
-                    object :  KJnaBinder(pkg.package_name, header_bindings, typedefs) {
+                    object : KJnaBinder(pkg.package_name, package_info, header_bindings, typedefs, anonymous_struct_indices = pkg.overrides.anonymous_struct_indices) {
                         override fun shouldIncludeStructField(name: String, type: CType, struct: CType.Struct): Boolean =
                             !struct_field_ignored_types.contains(type)
                     }
@@ -155,7 +157,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
                         if (!pkg.enabled || pkg.disabled_targets.contains(build_target)) KJnaBindTargetDisabled() else bind_target
                     }
 
-                return@map binder.generateBindings(package_targets)
+                return@mapIndexed binder.generateBindings(package_targets)
             }
 
         for ((target_index, build_target, bind_target) in bind_targets.withIndex()) {

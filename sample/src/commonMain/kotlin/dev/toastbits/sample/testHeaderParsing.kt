@@ -17,9 +17,7 @@ fun testHeaderParsing() {
     val typedefs: Map<String, CTypedef> = parser.getAllTypedefsMap()
     val functions: List<CFunctionDeclaration> = parser.getAllFunctions()
 
-    val header_info: CHeaderParser.HeaderInfo = parser.getHeaderByInclude(header_name)
-
-    println(parser.getAllHeaders())
+    val header_info: CHeaderParser.PackageInfo = parser.getHeaderByInclude(header_name)
 
     for (function in header_info.functions) {
         println("fun ${function.name}(${function.parameters}): ${function.return_type}")

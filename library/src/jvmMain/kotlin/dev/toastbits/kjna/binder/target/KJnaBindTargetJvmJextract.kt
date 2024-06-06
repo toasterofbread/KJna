@@ -14,7 +14,7 @@ import withIndex
 class KJnaBindTargetJvmJextract(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
 
-    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String =
+    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String =
         buildString {
             append("actual ")
             append(function_header)
@@ -38,7 +38,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                 }
                 append(getJvmPackageName(context.binder.package_name))
                 append('.')
-                append(header.class_name)
+                append(header_class_name)
                 append('.')
                 append(function.name)
                 append('(')
@@ -111,7 +111,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
 
                     append(param_name)
 
-                    for (i in 0 until if (param.type.type == CType.Primitive.CHAR) param.type.pointer_depth - 1 else param.type.pointer_depth) {
+                    for (i in 0 until if (param.type.type.isChar()) param.type.pointer_depth - 1 else param.type.pointer_depth) {
                         if (param_type.last() == '?') {
                             append('?')
                         }
@@ -140,7 +140,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                     else if (actual_type.type == CType.Primitive.U_INT && actual_type.pointer_depth == 0) {
                         append(".toInt()")
                     }
-                    else if (actual_type.type == CType.Primitive.CHAR && actual_type.pointer_depth == 1) {
+                    else if (actual_type.type.isChar() && actual_type.pointer_depth == 1) {
                         val memorySegment: String = context.importRuntimeType(RuntimeType.memorySegment)
                         arena_used = true
                         append("?.$memorySegment($arena_name)")
@@ -310,7 +310,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
     ): String = buildString {
         val actual_type: CValueType = type.fullyResolve(context.binder)
         val pointer_depth: Int =
-            if (actual_type.type == CType.Primitive.CHAR && actual_type.pointer_depth > 0) actual_type.pointer_depth - 1
+            if (actual_type.type.isChar() && actual_type.pointer_depth > 0) actual_type.pointer_depth - 1
             else actual_type.pointer_depth
 
         val assignable: Boolean =

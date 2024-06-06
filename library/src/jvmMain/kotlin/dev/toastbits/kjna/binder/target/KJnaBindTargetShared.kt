@@ -13,7 +13,7 @@ import withIndex
 class KJnaBindTargetShared(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("expect")
 
-    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String {
+    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String {
         return function_header
     }
 

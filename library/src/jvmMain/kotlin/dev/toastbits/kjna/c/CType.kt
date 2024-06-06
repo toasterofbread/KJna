@@ -7,6 +7,8 @@ import kotlinx.serialization.Serializable
 sealed interface CType {
     fun isForwardDeclaration(): Boolean = false
 
+    fun isChar(): Boolean = this == Primitive.CHAR || this == Primitive.U_CHAR
+
     @Serializable
     enum class Primitive: CType {
         VOID,
@@ -45,6 +47,9 @@ sealed interface CType {
 
     @Serializable
     data class Struct(val name: String?, val definition: CStructDefinition?, val anonymous_index: Int?): CType {
+        init {
+            require((name != null) != (anonymous_index != null)) { this }
+        }
         override fun isForwardDeclaration(): Boolean = definition == null
     }
 
@@ -53,11 +58,14 @@ sealed interface CType {
 
     @Serializable
     data class Union(val name: String?, val values: Map<String, CValueType>?, val anonymous_index: Int?): CType {
+        init {
+            require((name != null) != (anonymous_index != null)) { this }
+        }
         override fun isForwardDeclaration(): Boolean = values == null
     }
 
     @Serializable
-    data class Enum(val name: String, val values: Map<String, Int>, val has_explicit_value: Boolean): CType
+    data class Enum(val name: String, val values: Map<String, Int>, val has_explicit_value: Boolean, val type_name: String?): CType
 
     @Serializable
     data class Function(val shape: CFunctionDeclaration, val data_params: DataParams? = null): CType {
@@ -203,14 +211,14 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
     }
 
     type_specifier.enumSpecifier()?.also { enum_specifier ->
-        val name: String = enum_specifier.Identifier()?.text ?: name ?: throw NullPointerException(type_specifier.text)
+        val enum_name: String = enum_specifier.Identifier()?.text ?: name ?: throw NullPointerException(type_specifier.text)
         val values: MutableMap<String, Int> = mutableMapOf()
 
         var previous_value: Int = -1
         var has_explicit_value: Boolean = false
 
         for (item in enum_specifier.enumeratorList()?.enumerator().orEmpty()) {
-            val key: String  = item.enumerationConstant().Identifier().text
+            val key: String = item.enumerationConstant().Identifier().text
             val value: Int
 
             val constant_expression: CParser.ConstantExpressionContext? = item.constantExpression()
@@ -227,9 +235,10 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
         }
 
         return CType.Enum(
-            name = name,
+            name = enum_name,
             values = values,
-            has_explicit_value = has_explicit_value
+            has_explicit_value = has_explicit_value,
+            type_name = if (enum_specifier.Identifier() == null) null else name
         )
     }
 
@@ -239,6 +248,8 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
 private fun parseConstantExpression(expression: String, values: Map<String, Int>, parser: CHeaderParser): Int {
     try {
         return 0
+
+        // TODO | Uses an insane amount of memory?
         // return expression.tryAllOperations(values, parser)!!
     }
     catch (e: Throwable) {
