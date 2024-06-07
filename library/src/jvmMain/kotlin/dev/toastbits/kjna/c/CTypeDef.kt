@@ -125,14 +125,11 @@ fun CType.Typedef.resolve(getTypedef: (String) -> CTypedef?): CValueType {
     throw RuntimeException("Unresolved typedef '$this' -> '${passed.last()}' (${passed.size})")
 }
 
-fun CType.Typedef.resolve(typedefs: Map<String, CTypedef>): CValueType =
-    resolve { typedefs[it] }
-
-fun CValueType.fullyResolve(binder: KJnaBinder): CValueType {
+fun CValueType.fullyResolve(binder: KJnaBinder, ignore_typedef_overrides: Boolean = false): CValueType {
     if (type !is CType.Typedef) {
         return this
     }
-    return type.resolve(binder.typedefs).let { it.copy(pointer_depth = it.pointer_depth + pointer_depth) }
+    return type.resolve { binder.getTypedef(it, ignore_typedef_overrides = ignore_typedef_overrides) }.let { it.copy(pointer_depth = it.pointer_depth + pointer_depth) }
 }
 
 fun CValueType.fullyResolve(parser: CHeaderParser): CValueType {
@@ -141,7 +138,6 @@ fun CValueType.fullyResolve(parser: CHeaderParser): CValueType {
     }
     return type.resolve { parser.getTypedef(it) }.let { it.copy(pointer_depth = it.pointer_depth + pointer_depth) }
 }
-
 
 private fun PackageGenerationScope.parseFunctionTypedefDeclaration(specifiers: List<CParser.DeclarationSpecifierContext>, external_declaration: CParser.ExternalDeclarationContext): CTypedef? {
     if (specifiers.size < 2) {

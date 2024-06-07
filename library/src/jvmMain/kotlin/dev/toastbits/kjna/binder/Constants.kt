@@ -8,7 +8,8 @@ object Constants {
 
     fun formatKotlinFieldName(name: String): String =
         when (name) {
-            "in" -> "`$name`"
+            "in",
+            "object" -> "`$name`"
             else -> name
         }
 }

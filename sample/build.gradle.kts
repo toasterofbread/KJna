@@ -32,7 +32,7 @@ kotlin {
                     libraries = listOf("mpv")
 
                     if (OperatingSystem.current().isWindows()) {
-                        overrides.overrideTypedefType("size_t", CType.Primitive.LONG)
+                        overrides.overrideTypedefType("size_t", CType.Primitive.LONG, pointer_depth = 0)
                     }
                 }
             }

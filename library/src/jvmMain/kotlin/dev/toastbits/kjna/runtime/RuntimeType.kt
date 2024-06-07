@@ -19,11 +19,13 @@ open class RuntimeType(
         val registerAllocationCompanion: String = "registerAllocationCompanion"
     }
     object KJnaVarargList: RuntimeType("KJnaVarargList", "dev.toastbits.kjna.runtime.KJnaVarargList")
-    
+    object KJnaFunction: RuntimeType("KJnaFunction", "dev.toastbits.kjna.runtime.KJnaFunction")
+
     object convert: RuntimeType("convert", "dev.toastbits.kjna.runtime.convert")
 
     // Native
     object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")
+    object KJnaUnimplementedFunctionPointer: RuntimeType("KJnaUnimplementedFunctionPointer", "dev.toastbits.kjna.runtime.KJnaUnimplementedFunctionPointer")
     object pointedAs: RuntimeType("pointedAs", "dev.toastbits.kjna.runtime.pointedAs")
 
     // JVM

@@ -51,7 +51,7 @@ fun BindingGenerator.GenerationScope.generateStructBody(
                 if (type_name == null) {
                     throw NullPointerException(struct.toString())
                 }
-                appendLine(target.implementStructField(field_name, index, type, type_name, struct, scope_name ?: field_name, this@generateStructBody).prependIndent("    "))
+                appendLine(target.implementStructField(field_name, index, type, type_name, struct, name, scope_name ?: field_name, this@generateStructBody).prependIndent("    "))
             }
 
             val to_string: String? = target.implementStructToStringMethod(struct, this@generateStructBody)

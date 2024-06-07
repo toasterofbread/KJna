@@ -53,19 +53,23 @@ data class KJnaGeneratePackagesConfiguration(
          * Headers included by this header are parsed recusrively.
          *
          * @param header_path the path to the header file, relative to an include directory.
-         * @param class_name the name of the class to generate for this header file.
-         * @param parse_only if true, bindings will be generated for the header without passing it to Jextract or cinterop.
-         * @param preprocess if true, the KJna will perform C preprocessing on the header before parsing.
-         * @param parse_children if the path a header file included during the parsing of this header ends with one of these strings, a binding class will be generated for it.
+         * @param class_name the name of the class to generate for this header file, or null to skip generation.
+         * @param exclude_functions a list of functions in this header to be excluded from binding generation.
          */
         fun addHeader(
             header_path: String,
-            class_name: String,
-            parse_only: Boolean = false,
-            preprocess: Boolean = true,
-            parse_children: List<String> = emptyList()
+            class_name: String?,
+            exclude_functions: List<String> = emptyList(),
+            configure: KJnaGeneratePackageHeaderConfiguration.() -> Unit = {}
         ) {
-            headers += listOf(KJnaGeneratePackageHeaderConfiguration(header_path, class_name, parse_only = parse_only, preprocess = preprocess, parse_children = parse_children))
+            if (class_name != null) {
+                val conflicting_header: KJnaGeneratePackageHeaderConfiguration? = headers.firstOrNull { it.class_name == class_name }
+                check(conflicting_header == null) { "A header with class name '$class_name' has already been added to this package ($conflicting_header)" }
+            }
+
+            val header: KJnaGeneratePackageHeaderConfiguration = KJnaGeneratePackageHeaderConfiguration(header_path, class_name, exclude_functions = exclude_functions)
+            configure(header)
+            headers += listOf(header)
         }
 
         /**
@@ -97,7 +101,7 @@ data class KJnaGeneratePackagesConfiguration(
          * @param the type that the typedef should refer to.
          * @param pointer depth of [type].
          */
-        fun overrideTypedefType(name: String, type: CType, pointer_depth: Int = 0) {
+        fun overrideTypedefType(name: String, type: CType, pointer_depth: Int) {
             typedef_types = typedef_types.toMutableMap().apply { put(name, json.encodeToString(CValueType(type, pointer_depth))) }
         }
 
@@ -137,18 +141,18 @@ data class KJnaGeneratePackagesConfiguration(
  * @see dev.toastbits.kjna.plugin.KJnaGeneratePackagesConfiguration.Package.addHeader
  *
  * @property header_path the path to the header file, relative to an include directory.
- * @property class_name the name of the class to generate for this header file.
- * @param parse_only if true, bindings will be generated for the header without passing it to Jextract or cinterop.
- * @param preprocess if true, the KJna will perform C preprocessing on the header before parsing.
- * @param parse_children if the path a header file included during the parsing of this header ends with one of these strings, a binding class will be generated for it.
+ * @property class_name the name of the class to generate for this header file, or null to skip generation.
+ * @param bind_includes if the absolute path to an included header ends with an item in this list, its functions will be included in the binding class.
+ * @param bind_all_includes if true, functions from all included headers will be included in the binding class.
+ * @param exclude_functions a list of functions in this header to be excluded from binding generation.
  * @property override_jextract_loader header-specific override for [dev.toastbits.kjna.plugin.KJnaGenerationOptions.override_jextract_loader].
  */
 data class KJnaGeneratePackageHeaderConfiguration(
     var header_path: String,
-    var class_name: String,
-    var parse_only: Boolean = false,
-    var preprocess: Boolean = true,
-    var parse_children: List<String> = emptyList(),
+    var class_name: String?,
+    var bind_includes: List<String> = emptyList(),
+    var bind_all_includes: Boolean = false,
+    var exclude_functions: List<String> = emptyList(),
     var override_jextract_loader: Boolean? = null
 ): Serializable
 
@@ -176,7 +180,7 @@ fun KJnaGeneratePackagesConfiguration.Package.createDefFile(def_file: File, pars
 
     val compiler_opts: List<String> = include_dirs.map { "-I$it" }
     val linker_opts: List<String> = libraries.map { "-l$it" }
-    val header_files: List<String> = options.extra_headers + headers.mapNotNull { if (it.parse_only) null else parser.getHeaderFile(it.header_path).absolutePath }
+    val header_files: List<String> = options.extra_headers + headers.mapNotNull { if (it.class_name == null) null else parser.getHeaderFile(it.header_path).absolutePath }
 
     def_file.writeText("""
         compilerOpts = ${compiler_opts.joinToString(" ")}

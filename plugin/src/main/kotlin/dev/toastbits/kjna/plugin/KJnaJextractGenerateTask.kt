@@ -53,16 +53,14 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
             val symbol_filter_regex: List<Regex> = runtime_options.symbol_filter.map { Regex(it) }
 
             for (header in pkg.headers) {
-                if (header.parse_only) {
-                    continue
-                }
+                val header_class_name: String = header.class_name ?: continue
 
                 val target_package: String = KJnaBindTargetJvmJextract.getJvmPackageName(pkg.package_name)
                 val args: MutableList<String> =
                     mutableListOf(
                         parser.getHeaderFile(header.header_path).absolutePath,
                         "--target-package", target_package,
-                        "--header-class-name", header.class_name
+                        "--header-class-name", header_class_name
                     )
 
                 for (macro in runtime_options.macros) {
@@ -190,10 +188,9 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
 
                     content_iterator.set("    static SymbolLookup SYMBOL_LOOKUP = null;")
 
-                    check(content_iterator.next().trim() == ".or(SymbolLookup.loaderLookup())") { "Unexpected shape (1)" }
-                    content_iterator.remove()
-                    check(content_iterator.next().trim() == ".or(Linker.nativeLinker().defaultLookup());") { "Unexpected shape (2)" }
-                    content_iterator.remove()
+                    while (content_iterator.next().trim().startsWith(".or(")) {
+                        content_iterator.remove()
+                    }
                 }
             }
 

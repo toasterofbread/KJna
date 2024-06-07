@@ -5,21 +5,29 @@ import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CTypedef
 import dev.toastbits.kjna.c.CStructDefinition
 import dev.toastbits.kjna.c.CValueType
+import dev.toastbits.kjna.c.fullyResolve
+import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.binder.target.KJnaBindTarget
 
 open class KJnaBinder(
     val package_name: String,
     val package_info: CHeaderParser.PackageInfo,
     val headers: List<Header>,
-    val typedefs: MutableMap<String, CTypedef>,
-    val anonymous_struct_indices: Map<Int, Int> = emptyMap()
+    typedefs: Map<String, CTypedef>,
+    val anonymous_struct_indices: Map<Int, Int> = emptyMap(),
+    private val typedef_overrides: Map<String, CValueType> = emptyMap()
 ) {
     open fun shouldIncludeStructField(name: String, type: CType, struct: CType.Struct): Boolean = true
 
     data class Header(
         val absolute_path: String,
-        val class_name: String
-    )
+        val class_name: String?,
+        val exclude_functions: List<String>,
+        val additional_functions: Map<String, CFunctionDeclaration>
+    ) {
+        override fun toString(): String =
+            "KJnaBinder.Header(absolute_path=$absolute_path, class_name=$class_name, exclude_functions: ${exclude_functions.size}, additional_functions: ${additional_functions.size})"
+    }
 
     data class BindingFile(
         val class_name: String,
@@ -30,6 +38,12 @@ open class KJnaBinder(
         val top_level_package: String,
         val files: List<List<BindingFile>>
     )
+
+    private val typedefs: MutableMap<String, CTypedef> = typedefs.toMutableMap()
+
+    fun getTypedef(name: String, ignore_typedef_overrides: Boolean = false): CTypedef? =
+        if (ignore_typedef_overrides) typedefs[name]
+        else typedef_overrides[name]?.let { CTypedef(name, it) } ?: typedefs[name]
 
     fun generateBindings(targets: Collection<KJnaBindTarget>): GeneratedBindings {
         val files: MutableList<MutableList<BindingFile>> = targets.map { mutableListOf<BindingFile>() }.toMutableList()
@@ -77,7 +91,7 @@ open class KJnaBinder(
         for (target in targets) {
             generator.unhandledGenerationScope(target) {
                 do {
-                    val all_structs: List<CType.Struct> = used_structs.mapNotNull { typedefs[it]?.type?.type as? CType.Struct }
+                    val all_structs: List<CType.Struct> = used_structs.mapNotNull { getTypedef(it)?.type?.type as? CType.Struct }
                     for (header in headers) {
                         generateHeaderFileContent(header, all_structs)
                     }
@@ -85,7 +99,7 @@ open class KJnaBinder(
                     var i: Int = 0
                     while (i < new_structs.size) {
                         val struct_name: String = new_structs[i++]
-                        val typedef: CTypedef? = typedefs[struct_name]
+                        val typedef: CTypedef? = getTypedef(struct_name)
                         var is_undefined: Boolean = typedef == null
 
                         val struct: CType.Struct
@@ -106,7 +120,7 @@ open class KJnaBinder(
                     i = 0
                     while (i < new_unions.size) {
                         val union_name: String = new_unions[i++]
-                        val union: CType.Union = typedefs[union_name]!!.type.type as CType.Union
+                        val union: CType.Union = getTypedef(union_name)!!.type.type as CType.Union
 
                         generateUnion(union_name, union, null, union_name, target)
                     }
@@ -119,8 +133,8 @@ open class KJnaBinder(
         import_finished = true
 
         for ((i, struct_name) in used_structs.withIndex()) {
-            val struct: CType.Struct = typedefs[struct_name]!!.type.type as CType.Struct
-            if (struct.name != struct_name && typedefs.contains(struct.name)) {
+            val struct: CType.Struct = getTypedef(struct_name)!!.type.type as CType.Struct
+            if (struct.name != struct_name && struct.name?.let { getTypedef(it) } != null) {
                 continue
             }
 
@@ -141,7 +155,7 @@ open class KJnaBinder(
 
         for ((target_index, target) in targets.withIndex()) {
             for (union_name in used_unions) {
-                val union: CType.Union = typedefs[union_name]!!.type.type as CType.Union
+                val union: CType.Union = getTypedef(union_name)!!.type.type as CType.Union
                 generator.buildKotlinFile(target, Constants.UNION_PACKAGE_NAME) {
                     val content: String = generateUnion(union_name, union, null, union_name, target) ?: return@buildKotlinFile
                     append(content)
@@ -150,7 +164,7 @@ open class KJnaBinder(
             }
 
             for (enm in used_enums) {
-                val def: CType.Enum = (typedefs[enm] ?: throw NullPointerException("$enm ${typedefs["cairo_dither_t"]}")).type.type as CType.Enum
+                val def: CType.Enum = (getTypedef(enm) ?: throw NullPointerException(enm.toString())).type.type as CType.Enum
                 generator.buildKotlinFile(target, Constants.ENUM_PACKAGE_NAME) {
                     val content: String = target.implementEnumFileContent(def, this) ?: return@buildKotlinFile
                     append(content)
@@ -158,10 +172,11 @@ open class KJnaBinder(
                 }
             }
 
-            val all_structs: List<CType.Struct> = used_structs.mapNotNull { typedefs[it]?.type?.type as? CType.Struct }
+            val all_structs: List<CType.Struct> = used_structs.mapNotNull { getTypedef(it)?.type?.type as? CType.Struct }
             for (header in headers) {
                 generator.buildKotlinFile(target, package_name) {
-                    append(generateHeaderFileContent(header, all_structs))
+                    val file_content: String = generateHeaderFileContent(header, all_structs) ?: return@buildKotlinFile
+                    append(file_content)
                     files[target_index].add(BindingFile(package_name + '.' + header.class_name, build()))
                 }
             }

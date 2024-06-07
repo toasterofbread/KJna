@@ -14,6 +14,7 @@ import dev.toastbits.kjna.c.CHeaderParser
 import dev.toastbits.kjna.c.CTypedef
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.PackageGenerationScope
+import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.target.KJnaBindTarget
 import dev.toastbits.kjna.binder.target.KJnaBindTargetShared
@@ -122,10 +123,11 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
 
             val package_scope: PackageGenerationScope = PackageGenerationScope(parser)
             return@map parser.parsePackage(
-                headers = pkg.headers.mapNotNull { if (!it.preprocess) null else it.header_path },
+                headers = pkg.headers.map { it.header_path },
                 package_scope = package_scope,
                 extra_include_dirs = pkg.include_dirs,
-                ignore_headers = pkg.parser_ignore_headers
+                ignore_headers = pkg.parser_ignore_headers,
+                typedef_overrides = KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)
             )
         }
 
@@ -136,18 +138,41 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
 
                 val header_bindings: List<KJnaBinder.Header> =
                     pkg.headers.map { header ->
-                        KJnaBinder.Header(class_name = header.class_name, absolute_path = parser.getHeaderFile(header.header_path).absolutePath)
+                        val header_absolute_path: String = parser.getHeaderFile(header.header_path).absolutePath
+
+                        val additional_functions: MutableMap<String, CFunctionDeclaration> = mutableMapOf()
+                        for ((package_header_path, package_header) in package_info.headers) {
+                            if (package_header_path == header_absolute_path) {
+                                continue
+                            }
+
+                            if (header.bind_all_includes || header.bind_includes.any { package_header_path.endsWith(it) }) {
+                                for ((name, function) in package_header.functions) {
+                                    check(!additional_functions.contains(name)) { "Conflicting function name '$name'" }
+                                    additional_functions[name] = function
+                                }
+                            }
+                        }
+
+                        KJnaBinder.Header(
+                            class_name = header.class_name,
+                            absolute_path = header_absolute_path,
+                            exclude_functions = header.exclude_functions,
+                            additional_functions = additional_functions
+                        )
                     }
 
                 val struct_field_ignored_types: List<CType> = KJnaGeneratePackagesConfiguration.PackageOverrides.getStructFieldIgnoredTyped(pkg.overrides)
 
-                val typedefs: MutableMap<String, CTypedef> = package_info.typedefs.toMutableMap()
-                for ((typedef, type) in KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)) {
-                    typedefs[typedef] = CTypedef(typedef, type)
-                }
-
                 val binder: KJnaBinder =
-                    object : KJnaBinder(pkg.package_name, package_info, header_bindings, typedefs, anonymous_struct_indices = pkg.overrides.anonymous_struct_indices) {
+                    object : KJnaBinder(
+                        pkg.package_name,
+                        package_info,
+                        header_bindings,
+                        package_info.typedefs,
+                        anonymous_struct_indices = pkg.overrides.anonymous_struct_indices,
+                        typedef_overrides = KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)
+                    ) {
                         override fun shouldIncludeStructField(name: String, type: CType, struct: CType.Struct): Boolean =
                             !struct_field_ignored_types.contains(type)
                     }

@@ -84,7 +84,15 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                         )
                     }
                     if (param_type == null) {
-                        if (function.parameters.size == 1) {
+                        if (function.parameters.all {
+                            with (context) {
+                                it.type.toKotlinTypeName(
+                                    false,
+                                    createUnion = { createUnion(function.name, param_name, index, it) },
+                                    createStruct = { createStruct(function.name, param_name, index, it) }
+                                ) == null
+                            }
+                        }) {
                             break
                         }
 
@@ -210,7 +218,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
         return "constructor(val $STRUCT_VALUE_PROPERTY_NAME: MemorySegment, private val $MEM_SCOPE_PROPERTY_NAME: Arena = Arena.ofAuto())"
     }
 
-    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, scope_name: String?, context: BindingGenerator.GenerationScope): String {
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, struct_name: String, scope_name: String?, context: BindingGenerator.GenerationScope): String {
         return implementField(name, index, type, type_name, scope_name, null, context)
     }
 

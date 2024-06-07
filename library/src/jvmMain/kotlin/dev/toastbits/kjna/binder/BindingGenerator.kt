@@ -1,7 +1,6 @@
 package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.*
-import dev.toastbits.kjna.c.fullyResolve
 import dev.toastbits.kjna.runtime.RuntimeType
 import dev.toastbits.kjna.binder.target.KJnaBindTarget
 import dev.toastbits.kjna.binder.target.KJnaBindTargetDisabled
@@ -9,6 +8,7 @@ import dev.toastbits.kjna.binder.target.KJnaBindTargetShared
 import kotlin.reflect.KClass
 import kotlin.contracts.contract
 import kotlin.contracts.InvocationKind
+import withIndex
 
 class BindingGenerator(
     val binder: KJnaBinder,
@@ -121,8 +121,12 @@ class BindingGenerator(
             return base + (index + offset).toString()
         }
 
-        fun generateHeaderFileContent(header: KJnaBinder.Header, all_structs: List<CType.Struct>?): String =
+        fun generateHeaderFileContent(header: KJnaBinder.Header, all_structs: List<CType.Struct>?): String? =
             buildString {
+                if (header.class_name == null) {
+                    return null
+                }
+
                 val class_modifiers: List<String> = target.getClassModifiers()
                 for (modifier in class_modifiers) {
                     append(modifier)
@@ -138,7 +142,11 @@ class BindingGenerator(
                     appendLine()
                 }
 
-                for ((name, function) in binder.package_info.headers[header.absolute_path]!!.functions) {
+                for ((name, function) in (binder.package_info.headers[header.absolute_path]!!.functions.entries + header.additional_functions.entries).distinct()) {
+                    if (header.exclude_functions.contains(function.name)) {
+                        continue
+                    }
+
                     try {
                         val function_header: String = getKotlinFunctionHeader(function)
                         appendLine(target.implementFunction(function, function_header, header.class_name, this@GenerationScope).prependIndent("    "))
@@ -198,8 +206,15 @@ class BindingGenerator(
                         createUnion = { createUnion(function.name, param_name, index, it) },
                         createStruct = { createStruct(function.name, param_name, index, it) }
                     )
+
                 if (param_type == null) {
-                    if (params.size == 1) {
+                    if (params.all {
+                        it.type.toKotlinTypeName(
+                            false,
+                            createUnion = { createUnion(function.name, param_name, index, it) },
+                            createStruct = { createStruct(function.name, param_name, index, it) }
+                        ) == null
+                    }) {
                         break
                     }
 
@@ -317,7 +332,7 @@ class BindingGenerator(
                         }
 
                     is CType.Typedef -> {
-                        val resolved_type: CValueType = resolve(binder.typedefs)
+                        val resolved_type: CValueType = resolve { binder.getTypedef(it) }
 
                         when (resolved_type.type) {
                             is CType.Struct -> {
@@ -356,7 +371,7 @@ class BindingGenerator(
                     }
 
                     is CType.Union -> {
-                        kotlin_type = createUnion(this)
+                        kotlin_type = name?.let { importUnion(name) } ?: createUnion(this)
                     }
 
                     is CType.Function -> {
@@ -368,27 +383,38 @@ class BindingGenerator(
                                 }
                             }
 
-                            append('(')
-                            for ((index, param) in shape.parameters.withIndex()) {
-                                if (param.name != null) {
-                                    append(param.name)
-                                    append(": ")
-                                }
-                                append(param.type.toKotlinTypeName(false, createUnion, createStruct))
+                            append(importRuntimeType(RuntimeType.KJnaFunction))
 
-                                if (index + 1 != shape.parameters.size) {
-                                    append(", ")
-                                }
-                            }
+                            // append("((")
 
-                            append(") -> ")
-                            append(shape.return_type.toKotlinTypeName(true, createUnion, createStruct))
+                            // val params: List<Pair<String?, String>> =
+                            //     shape.parameters.mapNotNull { param ->
+                            //         Pair(param.name, param.type.toKotlinTypeName(false, createUnion, createStruct) ?: return@mapNotNull null)
+                            //     }
 
-                            if (is_return_type) {
-                                for (i in 0 until pointer_depth - 1) {
-                                    append(">")
-                                }
-                            }
+                            // for ((index, name, type) in params.withIndex()) {
+                            //     if (name != null) {
+                            //         append(Constants.formatKotlinFieldName(name))
+                            //         append(": ")
+                            //     }
+                            //     append(type)
+
+                            //     if (index + 1 != params.size) {
+                            //         append(", ")
+                            //     }
+                            // }
+
+                            // append(") -> ")
+                            // append(shape.return_type.toKotlinTypeName(true, createUnion, createStruct))
+                            // append(')')
+
+                            // if (is_return_type) {
+                            //     for (i in 0 until pointer_depth - 1) {
+                            //         append(">")
+                            //     }
+                            // }
+
+                            append('?')
                         }
                     }
 
@@ -420,8 +446,13 @@ class BindingGenerator(
         }
 
         fun createUnion(scope_name: String, parameter_name: String?, parameter_index: Int?, union: CType.Union): String {
-            val name: String = getLocalClassName(scope_name, parameter_index)
-            check(!local_classes.contains(name)) { "Union name collision '$name'" }
+            var name: String = getLocalClassName(scope_name, parameter_index)
+
+            if (local_classes.contains(name)) {
+                var i: Int = 1
+                while (local_classes.contains(name + "_${++i}")) {}
+                name = name + "_i"
+            }
 
             local_classes[name] = generateUnion(name, union, parameter_name, scope_name, target)
             return name

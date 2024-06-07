@@ -40,54 +40,58 @@ fun PackageGenerationScope.parseFunctionDeclaration(
 }
 
 fun PackageGenerationScope.parseFunctionParameters(parameters: List<CParser.ParameterDeclarationContext>): List<CFunctionParameter> {
-    val function_params: MutableList<CFunctionParameter> = parameters.map { parseFunctionParameter(it) }.toMutableList()
+    return processFunctionParameters(parameters.map { parseFunctionParameter(it) }) { it.fullyResolve(parser) }
+}
 
-    val i: MutableListIterator<CFunctionParameter> = function_params.listIterator()
-    while (i.hasNext()) {
-        val param: CFunctionParameter = i.next()
+private fun processFunctionParameters(parameters: List<CFunctionParameter>, resolveType: (CValueType) -> CValueType): List<CFunctionParameter> {
+    val function_params: MutableList<CFunctionParameter> = parameters.toMutableList()
 
-        val param_type: CValueType = param.type.fullyResolve(parser)
-        if (param_type.type !is CType.Function) {
-            continue
-        }
+    // val i: MutableListIterator<CFunctionParameter> = function_params.listIterator()
+    // while (i.hasNext()) {
+    //     val param: CFunctionParameter = i.next()
 
-        if (param_type.pointer_depth != 1) {
-            continue
-        }
+    //     val param_type: CValueType = resolveType(param.type)
+    //     if (param_type.type !is CType.Function) {
+    //         continue
+    //     }
 
-        val send_param_index: Int
+    //     if (param_type.pointer_depth != 1) {
+    //         continue
+    //     }
 
-        if (function_params.getOrNull(i.nextIndex())?.type?.fullyResolve(parser) == CType.Function.FUNCTION_DATA_PARAM_TYPE) {
-            send_param_index = i.nextIndex()
-        }
-        else if (function_params.getOrNull(i.previousIndex() - 1)?.type?.fullyResolve(parser) == CType.Function.FUNCTION_DATA_PARAM_TYPE) {
-            send_param_index = i.previousIndex() - 1
-        }
-        else {
-            continue
-        }
+    //     val send_param_index: Int
 
-        val func: CType.Function = param_type.type
-        if (func.shape.parameters.size != 1) {
-            continue
-        }
+    //     if (function_params.getOrNull(i.nextIndex())?.type?.let { resolveType(it) } == CType.Function.FUNCTION_DATA_PARAM_TYPE) {
+    //         send_param_index = i.nextIndex()
+    //     }
+    //     else if (function_params.getOrNull(i.previousIndex() - 1)?.type?.let { resolveType(it) } == CType.Function.FUNCTION_DATA_PARAM_TYPE) {
+    //         send_param_index = i.previousIndex() - 1
+    //     }
+    //     else {
+    //         continue
+    //     }
 
-        if (func.shape.parameters.single().type != CType.Function.FUNCTION_DATA_PARAM_TYPE) {
-            continue
-        }
+    //     val func: CType.Function = param_type.type
+    //     if (func.shape.parameters.size != 1) {
+    //         continue
+    //     }
 
-        i.set(param.copy(
-            type = param_type.copy(
-                type = func.copy(
-                    data_params = CType.Function.DataParams(
-                        send = send_param_index,
-                        recv = 0
-                    ),
-                    shape = func.shape.copy(parameters = emptyList())
-                )
-            )
-        ))
-    }
+    //     if (func.shape.parameters.single().type != CType.Function.FUNCTION_DATA_PARAM_TYPE) {
+    //         continue
+    //     }
+
+    //     i.set(param.copy(
+    //         type = param_type.copy(
+    //             type = func.copy(
+    //                 data_params = CType.Function.DataParams(
+    //                     send = send_param_index,
+    //                     recv = 0
+    //                 ),
+    //                 shape = func.shape.copy(parameters = emptyList())
+    //             )
+    //         )
+    //     ))
+    // }
 
     return function_params
 }

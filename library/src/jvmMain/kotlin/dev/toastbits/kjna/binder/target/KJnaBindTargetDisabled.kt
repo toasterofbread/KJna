@@ -17,7 +17,7 @@ class KJnaBindTargetDisabled(): KJnaBindTarget {
         return "actual $function_header { ${context.getThrowAccessError()} }"
     }
 
-    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, scope_name: String?, context: BindingGenerator.GenerationScope): String {
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, struct_name: String, scope_name: String?, context: BindingGenerator.GenerationScope): String {
         val actual_type: CValueType = type.fullyResolve(context.binder)
 
         val assignable: Boolean =

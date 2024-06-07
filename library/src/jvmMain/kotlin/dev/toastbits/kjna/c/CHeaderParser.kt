@@ -21,10 +21,13 @@ class CHeaderParser(include_dirs: List<String>) {
     ) {
         data class Header(
             val functions: Map<String, CFunctionDeclaration>
-        )
+        ) {
+            override fun toString(): String =
+                "Header(functions: ${functions.size})"
+        }
 
         override fun toString(): String =
-            "PackageInfo(headers: ${headers.keys}), structs: ${structs.size}, typedefs: ${typedefs.size}"
+            "PackageInfo(headers: $headers), structs: ${structs.size}, typedefs: ${typedefs.size}"
     }
 
     private val parsed_header_functions: MutableMap<String, MutableMap<String, CFunctionDeclaration>> = mutableMapOf()
@@ -33,6 +36,7 @@ class CHeaderParser(include_dirs: List<String>) {
 
     private val include_dirs: List<Path> = include_dirs.map { Paths.get(it) }
     private var all_include_dirs: List<Path> = this.include_dirs
+    private var typedef_overrides: Map<String, CValueType> = emptyMap()
 
     fun getHeaderByInclude(pkg: PackageInfo, header: String): PackageInfo.Header = pkg.headers[getHeaderFile(header).absolutePath]!!
 
@@ -40,8 +44,9 @@ class CHeaderParser(include_dirs: List<String>) {
         headers: List<String>,
         package_scope: PackageGenerationScope,
         extra_include_dirs: List<String> = emptyList(),
-        ignore_headers: List<String> = emptyList()
-    ): PackageInfo = withExtraIncludeDirs(extra_include_dirs) {
+        ignore_headers: List<String> = emptyList(),
+        typedef_overrides: Map<String, CValueType> = emptyMap()
+    ): PackageInfo = withExtras(extra_include_dirs, typedef_overrides) {
         parsed_header_functions.clear()
         parsed_structs.clear()
         parsed_typedefs.clear()
@@ -129,7 +134,7 @@ class CHeaderParser(include_dirs: List<String>) {
             preprocessor.close()
         }
 
-        return@withExtraIncludeDirs PackageInfo(
+        return@withExtras PackageInfo(
             headers = parsed_header_functions.entries.associate { (header, functions) -> header to PackageInfo.Header(functions = functions) },
             structs = parsed_structs.toMap(),
             typedefs = parsed_typedefs.toMap()
@@ -155,32 +160,44 @@ class CHeaderParser(include_dirs: List<String>) {
     fun getHeaderFile(path: String): File =
         getHeaderFileOrNull(path) ?: throw RuntimeException("Could not find header file for '$path' relatively or in $all_include_dirs")
 
-    internal fun getTypedef(name: String): CTypedef? = parsed_typedefs[name]
+    internal fun getTypedef(name: String): CTypedef? = typedef_overrides[name]?.let { CTypedef(name, it) } ?: parsed_typedefs[name]
 
     internal fun getConstantExpressionValue(name: String): Int? {
-        val typedef: CTypedef = parsed_typedefs[name] ?: return null
-
-        when (val type: CType = typedef.type.type) {
-            is CType.Enum -> {
-                for ((key, value) in type.values) {
+        for (type in typedef_overrides.values) {
+            if (type.type is CType.Enum) {
+                for ((key, value) in type.type.values) {
                     if (key == name) {
                         return value
                     }
                 }
             }
-            else -> {}
+        }
+        for (typedef in parsed_typedefs.values) {
+            if (typedef.type.type is CType.Enum) {
+                for ((key, value) in typedef.type.type.values) {
+                    if (key == name) {
+                        return value
+                    }
+                }
+            }
         }
 
         return null
     }
 
-    private fun <T> withExtraIncludeDirs(extra_include_dirs: List<String>, action: () -> T): T {
+    private fun <T> withExtras(
+        extra_include_dirs: List<String>,
+        typedef_overrides: Map<String, CValueType>,
+        action: () -> T
+    ): T {
+        this.typedef_overrides = typedef_overrides
         all_include_dirs = include_dirs + extra_include_dirs.map { Paths.get(it) }
         try {
             return action()
         }
         finally {
             all_include_dirs = include_dirs
+            this.typedef_overrides = emptyMap()
         }
     }
 
@@ -196,14 +213,6 @@ class CHeaderParser(include_dirs: List<String>) {
         val functions: MutableMap<String, CFunctionDeclaration> = parsed_header_functions.getOrPut(header_path) { mutableMapOf() }
 
         for (declaration in tree.externalDeclaration()) {
-            val function: CFunctionDeclaration? = declaration.declaration()?.let { parseFunctionDeclaration(it) }
-            if (function != null) {
-                val existing: CFunctionDeclaration? = functions[function.name]
-                check(existing == null || existing == function) { "Redeclaration of $function (existing=$existing) along $header_path" }
-                functions[function.name] = function
-                continue
-            }
-
             val typedef: CTypedef? =
                 try {
                     parseTypedefDeclaration(declaration)
@@ -240,6 +249,14 @@ class CHeaderParser(include_dirs: List<String>) {
                     parsed_structs[typedef.name] = typedef.type.type
                 }
 
+                continue
+            }
+
+            val function: CFunctionDeclaration? = declaration.declaration()?.let { parseFunctionDeclaration(it) }
+            if (function != null) {
+                val existing: CFunctionDeclaration? = functions[function.name]
+                check(existing == null || existing == function) { "Redeclaration of $function (existing=$existing) along $header_path" }
+                functions[function.name] = function
                 continue
             }
         }

@@ -13,6 +13,12 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
 import java.io.File
 
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE") // For KotlinMultiplatformExtension.project
+fun KotlinMultiplatformExtension.kjna(configure: KJnaConfiguration.() -> Unit) {
+    val generate_task: KJnaGenerateTask = project.tasks.getByName(KJnaGenerateTask.NAME) as KJnaGenerateTask
+    configure(KJnaConfiguration(project, generate_task, this))
+}
+
 class KJnaConfiguration(
     internal val project: Project,
     internal val generate_task: KJnaGenerateTask,
@@ -70,8 +76,3 @@ class KJnaJextractConfiguration(
     val runtime: KJnaJextractRuntimeOptions
 ): KJnaJextractBinaryOptions by binary, KJnaJextractRuntimeOptions by runtime
 
-@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE") // For KotlinMultiplatformExtension.project
-fun KotlinMultiplatformExtension.kjna(configure: KJnaConfiguration.() -> Unit) {
-    val generate_task: KJnaGenerateTask = project.tasks.getByName(KJnaGenerateTask.NAME) as KJnaGenerateTask
-    configure(KJnaConfiguration(project, generate_task, this))
-}
