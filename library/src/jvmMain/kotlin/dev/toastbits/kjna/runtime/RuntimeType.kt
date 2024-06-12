@@ -32,7 +32,6 @@ open class RuntimeType(
 
     // Native
     object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")
-    object KJnaUnimplementedFunctionPointer: RuntimeType("KJnaUnimplementedFunctionPointer", "dev.toastbits.kjna.runtime.KJnaUnimplementedFunctionPointer")
     object pointedAs: RuntimeType("pointedAs", "dev.toastbits.kjna.runtime.pointedAs")
 
     // JVM

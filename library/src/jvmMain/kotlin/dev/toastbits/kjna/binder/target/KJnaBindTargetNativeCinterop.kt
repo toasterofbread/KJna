@@ -41,10 +41,6 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
             }
 
             val actual_parameter_types: List<CValueType> = function.parameters.map { it.type.fullyResolve(context.binder) }
-            if (actual_parameter_types.any { type -> type.type is CType.Function && type.type.data_params == null }) {
-                val KJnaUnimplementedFunctionPointer: String = context.importRuntimeType(RuntimeType.KJnaUnimplementedFunctionPointer)
-                annotations += "@$KJnaUnimplementedFunctionPointer\n"
-            }
 
             append(getNativePackageName(context.binder.package_name))
             append('.')
