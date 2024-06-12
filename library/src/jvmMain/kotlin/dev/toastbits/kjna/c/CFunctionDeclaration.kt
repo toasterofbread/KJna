@@ -11,7 +11,7 @@ data class CFunctionDeclaration(
     val parameters: List<CFunctionParameter> = emptyList()
 )
 
-fun PackageGenerationScope.parseFunctionDeclaration(
+internal fun PackageGenerationScope.parseFunctionDeclaration(
     declaration: CParser.DeclarationContext
 ): CFunctionDeclaration? {
     try {
@@ -43,7 +43,7 @@ fun PackageGenerationScope.parseFunctionDeclaration(
     }
 }
 
-fun PackageGenerationScope.parseFunctionParameters(parameters: List<CParser.ParameterDeclarationContext>): List<CFunctionParameter> {
+internal fun PackageGenerationScope.parseFunctionParameters(parameters: List<CParser.ParameterDeclarationContext>): List<CFunctionParameter> {
     return processFunctionParameters(parameters.map { parseFunctionParameter(it) }) { it.fullyResolve(parser) }
 }
 

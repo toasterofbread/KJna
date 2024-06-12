@@ -42,7 +42,6 @@ class CHeaderParser(include_dirs: List<String>) {
 
     fun parsePackage(
         headers: List<String>,
-        package_scope: PackageGenerationScope,
         extra_include_dirs: List<String> = emptyList(),
         ignore_headers: List<String> = emptyList(),
         typedef_overrides: Map<String, CValueType> = emptyMap()
@@ -58,6 +57,8 @@ class CHeaderParser(include_dirs: List<String>) {
                     println("Warning: $source $line:$column $msg")
                 }
             }
+
+        val package_scope: PackageGenerationScope = PackageGenerationScope(this)
 
         for (header_path in headers) {
             val file: File = getHeaderFile(header_path)

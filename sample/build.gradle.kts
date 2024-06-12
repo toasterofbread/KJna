@@ -23,8 +23,6 @@ kotlin {
 
     kjna {
         generate {
-            override_jextract_loader = true
-
             packages(native_targets) {
                 add("kjna.libmpv") {
                     enabled = true

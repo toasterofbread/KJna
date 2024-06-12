@@ -9,17 +9,15 @@ import dev.toastbits.kjna.c.resolve
 fun testHeaderParsing() {
     println("--- testHeaderParsing() ---")
 
-    val header_name: String = "mpv/client.h"
-
     val parser: CHeaderParser = CHeaderParser(listOf("/usr/include/", "/usr/include/linux/", "C:/msys64/mingw64/include/"))
-    parser.parse(listOf(header_name))
 
-    val typedefs: Map<String, CTypedef> = parser.getAllTypedefsMap()
-    val functions: List<CFunctionDeclaration> = parser.getAllFunctions()
+    val header_name: String = "mpv/client.h"
+    val package_info: CHeaderParser.PackageInfo = parser.parsePackage(listOf(header_name))
 
-    val header_info: CHeaderParser.PackageInfo = parser.getHeaderByInclude(header_name)
-
-    for (function in header_info.functions) {
-        println("fun ${function.name}(${function.parameters}): ${function.return_type}")
+    for ((file, header) in package_info.headers) {
+        println("Header $file")
+        for (function in header.functions.values) {
+            println("fun ${function.name}(${function.parameters}): ${function.return_type}")
+        }
     }
 }

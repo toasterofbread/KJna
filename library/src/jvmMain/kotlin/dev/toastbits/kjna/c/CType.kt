@@ -83,7 +83,7 @@ sealed interface CType {
     data class Array(val type: CValueType, val size: Int): CType
 }
 
-fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>, name: String? = null): CType {
+internal fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>, name: String? = null): CType {
     require(declaration_specifiers.isNotEmpty())
 
     val qualifiers: MutableList<CParser.TypeQualifierContext> = mutableListOf()
@@ -102,7 +102,7 @@ fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers:
     }
 }
 
-fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList(), name: String? = null): CType {
+internal fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList(), name: String? = null): CType {
     require(specifiers.isNotEmpty())
 
     val modifiers: List<CTypeModifier> = specifiers.dropLast(1).mapNotNull { parseModifierSpecifier(it) }

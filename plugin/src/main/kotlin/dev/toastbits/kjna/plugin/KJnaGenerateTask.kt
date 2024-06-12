@@ -13,7 +13,6 @@ import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
 import dev.toastbits.kjna.c.CTypedef
 import dev.toastbits.kjna.c.CType
-import dev.toastbits.kjna.c.PackageGenerationScope
 import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.target.KJnaBindTarget
@@ -121,10 +120,8 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
         val parsed_packages: List<CHeaderParser.PackageInfo> = packages.packages.map { pkg ->
             println("Parsing headers for $pkg...")
 
-            val package_scope: PackageGenerationScope = PackageGenerationScope(parser)
             return@map parser.parsePackage(
                 headers = pkg.headers.map { it.header_path },
-                package_scope = package_scope,
                 extra_include_dirs = pkg.include_dirs,
                 ignore_headers = pkg.parser_ignore_headers,
                 typedef_overrides = KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)

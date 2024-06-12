@@ -5,7 +5,7 @@ import dev.toastbits.kjna.binder.KJnaBinder
 
 data class CTypedef(val name: String, val type: CValueType)
 
-fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypedef? {
+internal fun PackageGenerationScope.parseTypedefDeclaration(external_declaration: CParser.ExternalDeclarationContext): CTypedef? {
     var specifiers: List<CParser.DeclarationSpecifierContext> =
         external_declaration.declaration()?.declarationSpecifiers()?.declarationSpecifier() ?: return null
 
