@@ -3,23 +3,21 @@ package dev.toastbits.sample
 import dev.toastbits.kjna.c.CHeaderParser
 import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
-import dev.toastbits.kjna.c.CTypeDef
+import dev.toastbits.kjna.c.CTypedef
 import dev.toastbits.kjna.c.resolve
 
 fun testHeaderParsing() {
     println("--- testHeaderParsing() ---")
 
+    val parser: CHeaderParser = CHeaderParser(listOf("/usr/include/", "/usr/include/linux/", "C:/msys64/mingw64/include/"))
+
     val header_name: String = "mpv/client.h"
+    val package_info: CHeaderParser.PackageInfo = parser.parsePackage(listOf(header_name))
 
-    val parser: CHeaderParser = CHeaderParser(listOf("/usr/include/", "/usr/local/include/", "/usr/include/linux/", "C:/msys64/mingw64/include"))
-    parser.parse(listOf(header_name))
-
-    val typedefs: Map<String, CTypeDef> = parser.getAllTypedefsMap()
-    val functions: List<CFunctionDeclaration> = parser.getAllFunctions()
-
-    val header_info: CHeaderParser.HeaderInfo = parser.getHeaderByInclude(header_name)
-
-    for (function in header_info.functions) {
-        println("fun ${function.name}(${function.parameters}): ${function.return_type}")
+    for ((file, header) in package_info.headers) {
+        println("Header $file")
+        for (function in header.functions.values) {
+            println("fun ${function.name}(${function.parameters}): ${function.return_type}")
+        }
     }
 }

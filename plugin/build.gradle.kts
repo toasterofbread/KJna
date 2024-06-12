@@ -18,7 +18,7 @@ gradlePlugin {
         create("kjna") {
             id = "dev.toastbits.kjna"
             displayName = "KJna"
-            description = "Generates multiplatform Kotlin code for common-module access to native libraries."
+            description = "Generates multiplatform Kotlin code for common module access to native libraries."
             tags.set(listOf("kmp", "multiplatform", "binding", "jextract", "cinterop", "kotlin-native"))
             implementationClass = "dev.toastbits.kjna.plugin.KJnaPlugin"
         }

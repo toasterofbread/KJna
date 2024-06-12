@@ -1,6 +1,6 @@
 # KJna
 
-A Gradle plugin for Kotlin Multiplatform projects which generates binding code for common-module access to native libraries. Supports Kotlin/Native using the built-in cinterop system and Kotlin/JVM using [Jextract](https://github.com/openjdk/jextract).
+A Gradle plugin for Kotlin Multiplatform projects which generates binding code for common module access to native libraries. Supports Kotlin/Native using the built-in cinterop system and Kotlin/JVM using [Jextract](https://github.com/openjdk/jextract).
 
 KJna currently supports the following Kotlin platforms:
 - JVM
@@ -117,5 +117,6 @@ kotlin {
 
 - [ANTLR](https://github.com/antlr/antlr4)
 - [Kotlin support for ANTLR](https://github.com/Strumenta/antlr-kotlin) by [Strumenta](https://github.com/Strumenta)
+- [JCPP](https://github.com/shevek/jcpp) by [Shevek](https://github.com/shevek)
 - [Gradle download task](https://github.com/michel-kraemer/gradle-download-task) by [Michel Krämer](https://github.com/michel-kraemer)
 - [Plexus archiver](https://github.com/codehaus-plexus/plexus-archiver) by [Codehaus](https://github.com/codehaus-plexus)

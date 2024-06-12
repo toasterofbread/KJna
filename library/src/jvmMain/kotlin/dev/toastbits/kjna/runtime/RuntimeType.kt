@@ -7,19 +7,32 @@ open class RuntimeType(
 ) {
     object KJnaDisabledPackageAccessException: RuntimeType("KJnaDisabledPackageAccessException", "dev.toastbits.kjna.runtime.KJnaDisabledPackageAccessException")
     object KJnaMemScope: RuntimeType("KJnaMemScope", "dev.toastbits.kjna.runtime.KJnaMemScope") {
+        val confined: String = "confined"
         val native_scope: String = "native_scope"
         val jvm_arena: String = "jvm_arena"
     }
     object KJnaPointer: RuntimeType("KJnaPointer", "dev.toastbits.kjna.runtime.KJnaPointer")
     object KJnaTypedPointer: RuntimeType("KJnaTypedPointer", "dev.toastbits.kjna.runtime.KJnaTypedPointer") {
-        val pointer: String = "pointer"
+        val native_pointer: String = "pointer"
+        val jvm_pointer: String = "pointer"
     }
     object KJnaAllocationCompanion: RuntimeType("KJnaAllocationCompanion", "dev.toastbits.kjna.runtime.KJnaAllocationCompanion") {
         val registerAllocationCompanion: String = "registerAllocationCompanion"
     }
+    object KJnaVarargList: RuntimeType("KJnaVarargList", "dev.toastbits.kjna.runtime.KJnaVarargList") {
+        val jvm_data: String = "data"
+    }
+    object KJnaFunctionPointer: RuntimeType("KJnaFunctionPointer", "dev.toastbits.kjna.runtime.KJnaFunctionPointer") {
+        val native_function: String = "function"
+        val jvm_function: String = "function"
+    }
+
+    object convert: RuntimeType("convert", "dev.toastbits.kjna.runtime.convert")
+    object uncheckedCast: RuntimeType("uncheckedCast", "dev.toastbits.kjna.runtime.uncheckedCast")
 
     // Native
     object KJnaNativeStruct: RuntimeType("KJnaNativeStruct", "dev.toastbits.kjna.runtime.KJnaNativeStruct")
+    object KJnaUnimplementedFunctionPointer: RuntimeType("KJnaUnimplementedFunctionPointer", "dev.toastbits.kjna.runtime.KJnaUnimplementedFunctionPointer")
     object pointedAs: RuntimeType("pointedAs", "dev.toastbits.kjna.runtime.pointedAs")
 
     // JVM

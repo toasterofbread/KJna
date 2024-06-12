@@ -5,6 +5,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 sealed interface CType {
+    fun isForwardDeclaration(): Boolean = false
+
+    fun isChar(): Boolean = this == Primitive.CHAR || this == Primitive.U_CHAR
+
     @Serializable
     enum class Primitive: CType {
         VOID,
@@ -21,7 +25,8 @@ sealed interface CType {
         FLOAT,
         DOUBLE,
         LONG_DOUBLE,
-        BOOL;
+        BOOL,
+        VALIST;
 
         fun isInteger(): Boolean =
             when (this) {
@@ -38,28 +43,47 @@ sealed interface CType {
     }
 
     @Serializable
-    data class TypeDef(val name: String): CType
+    data class Typedef(val name: String): CType
 
-    @Serializable
-    data class Struct(val name: String, val definition: CStructDefinition): CType {
-        fun isTypedef(): Boolean = definition.fields.isEmpty()
+    sealed interface StructOrUnion: CType {
+        val name: String?
+        val anonymous_index: Int?
     }
 
     @Serializable
-    data class Union(val values: Map<String, CValueType>, val anonymous_index: Int?): CType
+    data class Struct(override val name: String?, val definition: CStructDefinition?, override val anonymous_index: Int?): CType, StructOrUnion {
+        init {
+            require((name != null) != (anonymous_index != null)) { this }
+        }
+        override fun isForwardDeclaration(): Boolean = definition == null
+    }
 
     @Serializable
-    data class Enum(val name: String, val values: Map<String, Int>): CType
+    data class Union(override val name: String?, val values: Map<String, CValueType>?, override val anonymous_index: Int?): CType, StructOrUnion {
+        init {
+            require((name != null) != (anonymous_index != null)) { this }
+        }
+        override fun isForwardDeclaration(): Boolean = values == null
+    }
 
     @Serializable
-    data class Function(val shape: CFunctionDeclaration, val data_send_param: Int? = null, val data_recv_param: Int? = null): CType {
+    data class Enum(val name: String, val values: Map<String, Int>, val has_explicit_value: Boolean, val type_name: String?): CType
+
+    @Serializable
+    data class Function(val shape: CFunctionDeclaration, val data_params: DataParams? = null, val typedef_name: String? = null): CType {
+        @Serializable
+        data class DataParams(val send: Int, val recv: Int)
+
         companion object {
             val FUNCTION_DATA_PARAM_TYPE: CValueType = CValueType(CType.Primitive.VOID, 1)
         }
     }
+
+    @Serializable
+    data class Array(val type: CValueType, val size: Int): CType
 }
 
-fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>): CType {
+internal fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers: List<CParser.DeclarationSpecifierContext>, name: String? = null): CType {
     require(declaration_specifiers.isNotEmpty())
 
     val qualifiers: MutableList<CParser.TypeQualifierContext> = mutableListOf()
@@ -70,14 +94,25 @@ fun PackageGenerationScope.parseDeclarationSpecifierType(declaration_specifiers:
         specifier.typeSpecifier()?.also { specifiers.add(it) }
     }
 
-    return parseType(specifiers, qualifiers)
+    try {
+        return parseType(specifiers, qualifiers, name)
+    }
+    catch (e: Throwable) {
+        throw RuntimeException("parseType failed ($name, ${declaration_specifiers.map { it.text }})", e)
+    }
 }
 
-fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList()): CType {
+internal fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierContext>, qualifiers: List<CParser.TypeQualifierContext> = emptyList(), name: String? = null): CType {
     require(specifiers.isNotEmpty())
 
     val modifiers: List<CTypeModifier> = specifiers.dropLast(1).mapNotNull { parseModifierSpecifier(it) }
-    var type: CType = parseTypeSpecifier(specifiers.last())
+    var type: CType =
+        try {
+            parseTypeSpecifier(specifiers.last(), name)
+        }
+        catch (e: Throwable) {
+            throw RuntimeException("parseTypeSpecifier failed ($name, ${specifiers.map { it.text }})", e)
+        }
 
     for (modifier in modifiers) {
         when (modifier) {
@@ -130,7 +165,7 @@ fun PackageGenerationScope.parseType(specifiers: List<CParser.TypeSpecifierConte
     return type
 }
 
-private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.TypeSpecifierContext): CType {
+private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.TypeSpecifierContext, name: String? = null): CType {
     if (type_specifier.Void() != null) {
         return CType.Primitive.VOID
     }
@@ -160,22 +195,20 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
     }
 
     type_specifier.typedefName()?.Identifier()?.text?.also {
-        return CType.TypeDef(it)
+        return CType.Typedef(it)
     }
 
     type_specifier.structOrUnionSpecifier()?.also { specifier ->
+        val struct_declarations: List<CParser.StructDeclarationContext>? = specifier.structDeclarationList()?.structDeclaration()
+        val struct_definition: CStructDefinition? = struct_declarations?.let { parseStructDefinition(it) }
+
         val struct_or_union: CParser.StructOrUnionContext = specifier.structOrUnion()
-        val struct_declarations: List<CParser.StructDeclarationContext> = specifier.structDeclarationList()?.structDeclaration().orEmpty()
-
-        val struct_definition: CStructDefinition = parseStructDefinition(struct_declarations)
-
+        val name: String? = specifier.Identifier()?.text ?: name
         if (struct_or_union.Struct() != null) {
-            val name: String = specifier.Identifier()?.text ?: throw NullPointerException(type_specifier.text)
-            return CType.Struct(name, struct_definition)
+            return CType.Struct(name, struct_definition, if (name == null) ++anonymous_struct_index else null)
         }
         else if (struct_or_union.Union() != null) {
-            check(specifier.Identifier()?.text == null) { type_specifier.text }
-            return CType.Union(struct_definition.fields, ++anonymous_struct_index)
+            return CType.Union(name, struct_definition?.fields, if (name == null) ++anonymous_struct_index else null)
         }
         else {
             throw NotImplementedError(type_specifier.text)
@@ -183,22 +216,229 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
     }
 
     type_specifier.enumSpecifier()?.also { enum_specifier ->
-        val name: String = enum_specifier.Identifier()?.text ?: throw NullPointerException(type_specifier.text)
+        val enum_name: String = enum_specifier.Identifier()?.text ?: name ?: throw NullPointerException(type_specifier.text)
         val values: MutableMap<String, Int> = mutableMapOf()
 
         var previous_value: Int = -1
+        var has_explicit_value: Boolean = false
+
         for (item in enum_specifier.enumeratorList()?.enumerator().orEmpty()) {
-            val key: String  = item.enumerationConstant().Identifier().text
-            val value: Int = item.constantExpression()?.text?.toInt() ?: (previous_value + 1)
-            previous_value = value
+            val key: String = item.enumerationConstant().Identifier().text
+            val value: Int
+
+            val constant_expression: CParser.ConstantExpressionContext? = item.constantExpression()
+            if (constant_expression != null) {
+                has_explicit_value = true
+                value = parseConstantExpression(constant_expression.text, values, parser)
+            }
+            else {
+                value = (previous_value + 1)
+            }
 
             values[key] = value
+            previous_value = value
         }
 
-        return CType.Enum(name, values)
+        return CType.Enum(
+            name = enum_name,
+            values = values,
+            has_explicit_value = has_explicit_value,
+            type_name = if (enum_specifier.Identifier() == null) null else name
+        )
     }
 
     TODO(type_specifier.text)
+}
+
+private fun parseConstantExpression(expression: String, values: Map<String, Int>, parser: CHeaderParser): Int {
+    try {
+        return expression.tryAllOperations(values, parser, 0)!!
+    }
+    catch (e: Throwable) {
+        throw RuntimeException("Parsing constant value expression '$expression' failed ($values)", e)
+    }
+}
+
+private enum class Operation {
+    SHIFT_L,
+    SHIFT_R,
+    AND,
+    OR,
+    ADD,
+    SUB,
+    MUL,
+    DIV;
+
+    val kw: String get() =
+        when (this) {
+            SHIFT_L -> "<<"
+            SHIFT_R -> ">>"
+            AND -> "&"
+            OR -> "|"
+            ADD -> "+"
+            SUB -> "-"
+            MUL -> "*"
+            DIV -> "/"
+        }
+
+    fun perform(a: Int, b: Int): Int =
+        when (this) {
+            SHIFT_L -> a shl b
+            SHIFT_R -> a shr b
+            AND -> a and b
+            OR -> a or b
+            ADD -> a + b
+            SUB -> a - b
+            MUL -> a * b
+            DIV -> a / b
+        }
+}
+
+private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderParser, depth: Int, region: IntRange = indices): Int? {
+    check(region.size != 0) { "Empty expression ($region, $this)" }
+    check(depth < 100) { "tryAllOperations recursion depth reached 100 ($region, $this)" }
+
+    var region: IntRange = region
+    val multiplier: Int
+
+    if (get(region.start) == '-') {
+        region = region.start + 1 .. region.endInclusive
+        multiplier = -1
+    }
+    else {
+        multiplier = 1
+    }
+
+    val first: Char = get(region.start)
+
+    if (first.isDigit()) {
+        val last_digit: Int = region.last { get(it).isDigit() }
+        if (last_digit != -1) {
+            substring(region.start, last_digit + 1).toIntOrNull()?.let { return it * multiplier }
+        }
+
+        if (first == '0') {
+            when (getOrNull(region.start + 1)) {
+                'x' -> {
+                    @OptIn(ExperimentalStdlibApi::class)
+                    return substring(region.start + 2, region.endInclusive + 1).trimEnd('u', 'U').hexToInt() * multiplier
+                }
+                'b' -> {
+                    return substring(region.start + 2, region.endInclusive + 1).toInt(2) * multiplier
+                }
+            }
+        }
+    }
+    else if (region.size == 3 && first == '\'' && get(region.endInclusive) == '\'') {
+        return get(region.start + 1).code * multiplier
+    }
+
+    substring(region).also { string ->
+        values[string]?.also { return it * multiplier }
+
+        parser.getConstantExpressionValue(string)?.also { return it * multiplier }
+
+        if (parser.getTypedef(string) != null) {
+            return null
+        }
+    }
+
+    // -----
+
+    val seq: MutableList<Any> = mutableListOf()
+
+    var i: Int = region.start
+    var start: Int = i
+    while (i <= region.endInclusive) {
+        if (get(i) == '(') {
+            var end: Int = i
+            var depth: Int = 0
+            while (true) {
+                val c: Char = getOrNull(++end) ?: throw RuntimeException("Bracket at position $i not closed")
+                if (c == '(') {
+                    depth++
+                }
+                else if (c == ')' && depth-- <= 0) {
+                    break
+                }
+            }
+
+            seq.add(i + 1 until end)
+            i = end + 1
+            start = i
+            continue
+        }
+
+        for (op in Operation.entries) {
+            if (region.contains(i + op.kw.length - 1) && regionMatches(i, op.kw, 0, op.kw.length)) {
+                val between: IntRange = start until i
+                if (between.any { !get(it).isWhitespace() }) {
+                    seq.add(between)
+                }
+
+                seq.add(op)
+
+                i += op.kw.length - 1
+                start = i + 1
+                break
+            }
+        }
+
+        i++
+    }
+
+    val end: IntRange = start .. region.endInclusive
+    if (end.any { !get(it).isWhitespace() }) {
+        seq.add(end)
+    }
+
+    check(seq.isNotEmpty())
+
+    try {
+        var a: Int? = null
+        var op: Operation? = null
+
+        while (seq.isNotEmpty()) {
+            val part: Any = seq.removeFirst()
+            if (seq.isEmpty()) {
+                check(part is IntRange) { part }
+                return tryAllOperations(values, parser, depth + 1, part)
+            }
+
+            if (a == null) {
+                a = when (part) {
+                    is Int -> part
+                    is IntRange -> tryAllOperations(values, parser, depth + 1, part)
+                    else -> throw IllegalStateException("$part (${part::class})")
+                }
+            }
+            else if (op == null) {
+                check(part is Operation)
+                op = part
+            }
+            else {
+                val b: Int = when (part) {
+                    is Int -> part
+                    is IntRange -> tryAllOperations(values, parser, depth + 1, part) ?: throw NullPointerException(substring(part))
+                    else -> throw IllegalStateException("$part (${part::class})")
+                }
+
+                val value: Int = op.perform(a, b)
+                if (seq.isEmpty()) {
+                    return value
+                }
+
+                seq.add(0, value)
+                a = null
+                op = null
+            }
+        }
+    }
+    catch (e: Throwable) {
+        throw RuntimeException("Parsing sequence failed ($seq, $this, $region)", e)
+    }
+
+    throw NotImplementedError(this)
 }
 
 private fun parseModifierSpecifier(type_specifier: CParser.TypeSpecifierContext): CTypeModifier? {
@@ -218,3 +458,5 @@ private fun parseModifierSpecifier(type_specifier: CParser.TypeSpecifierContext)
     // println("Ignoring unknown type modifier '${type_specifier.text}'")
     return null
 }
+
+private val IntRange.size: Int get() = endInclusive - start + 1

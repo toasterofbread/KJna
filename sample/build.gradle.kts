@@ -23,8 +23,6 @@ kotlin {
 
     kjna {
         generate {
-            override_jextract_loader = true
-
             packages(native_targets) {
                 add("kjna.libmpv") {
                     enabled = true
@@ -32,7 +30,7 @@ kotlin {
                     libraries = listOf("mpv")
 
                     if (OperatingSystem.current().isWindows()) {
-                        overrides.overrideTypedefType("size_t", CType.Primitive.LONG)
+                        overrides.overrideTypedefType("size_t", CType.Primitive.LONG, pointer_depth = 0)
                     }
                 }
             }

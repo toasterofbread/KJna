@@ -44,7 +44,10 @@ kotlin {
             dependencies {
                 val antlr_kotlin_version: String = extra["antlrKotlin.version"] as String
                 implementation("com.strumenta:antlr-kotlin-runtime:$antlr_kotlin_version")
-                
+
+                val jcpp_version: String = extra["jcpp.version"] as String
+                implementation("org.anarres:jcpp:$jcpp_version")
+
                 val json_version: String = extra["kotlinx.serialization.json.version"] as String
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$json_version")
             }

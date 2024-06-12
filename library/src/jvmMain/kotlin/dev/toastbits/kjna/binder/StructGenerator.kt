@@ -2,11 +2,17 @@ package dev.toastbits.kjna.binder
 
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
-import dev.toastbits.kjna.binder.target.KJnaBinderTarget
+import dev.toastbits.kjna.binder.target.KJnaBindTarget
 import withIndex
 
-fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, target: KJnaBinderTarget): String =
-    buildString {
+fun BindingGenerator.GenerationScope.generateStructBody(
+    name: String,
+    struct: CType.Struct,
+    target: KJnaBindTarget,
+    scope_name: String? = null,
+    includeField: ((String, CType) -> Boolean)? = null
+): String = buildString {
+    try {
         val struct_annotation: String? = target.implementStructAnnotation(struct, this@generateStructBody)
         if (struct_annotation != null) {
             appendLine(struct_annotation)
@@ -17,9 +23,9 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
             append(' ')
         }
         append("class ")
-        append(struct.name)
+        append(name)
 
-        val struct_constructor: String? = target.implementStructConstructor(struct, this@generateStructBody)
+        val struct_constructor: String? = target.implementStructConstructor(struct, name, this@generateStructBody)
         if (struct_constructor != null) {
             append(' ')
             append(struct_constructor)
@@ -27,27 +33,37 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
 
         val companion_object: String? = target.implementStructCompanionObject(struct, this@generateStructBody)
 
-        if (struct.definition.fields.isNotEmpty() || companion_object != null) {
+        if (struct.definition?.fields?.isNotEmpty() == true || companion_object != null) {
             appendLine(" {")
 
-            for ((index, name, type) in struct.definition.fields.withIndex()) {
-                val type_name: String? = type.toKotlinTypeName(false) { createUnion(struct.name, name, index, it) }
+            for ((index, field_name, type) in struct.definition?.fields?.withIndex() ?: emptyList()) {
+                if (includeField?.invoke(field_name, type.type) == false) {
+                    continue
+                }
+
+                val type_name: String? =
+                    type.toKotlinTypeName(
+                        false,
+                        createUnion = { createUnion(struct.name ?: name, field_name, index, it) },
+                        createStruct = { createStruct(struct.name ?: name, field_name, index, it) }
+                    )
+
                 if (type_name == null) {
                     throw NullPointerException(struct.toString())
                 }
-                appendLine(target.implementStructField(name, index, type, type_name, struct, this@generateStructBody).prependIndent("    "))
+                appendLine(target.implementStructField(field_name, index, type, type_name, struct, name, scope_name ?: field_name, this@generateStructBody).prependIndent("    "))
             }
 
             val to_string: String? = target.implementStructToStringMethod(struct, this@generateStructBody)
             if (to_string != null) {
-                if (struct.definition.fields.isNotEmpty()) {
+                if (struct.definition?.fields?.isNotEmpty() == true) {
                     appendLine()
                 }
                 appendLine(to_string.prependIndent("    "))
             }
 
             if (companion_object != null) {
-                if (struct.definition.fields.isNotEmpty() || to_string != null) {
+                if (struct.definition?.fields?.isNotEmpty() == true || to_string != null) {
                     appendLine()
                 }
 
@@ -57,3 +73,7 @@ fun BindingGenerator.GenerationScope.generateStructBody(struct: CType.Struct, ta
             append("}")
         }
     }
+    catch (e: Throwable) {
+        throw RuntimeException("generateStructBody failed ($name $target $struct)", e)
+    }
+}

@@ -5,9 +5,22 @@ import org.gradle.api.DefaultTask
 import java.io.File
 import org.gradle.api.GradleException
 import dev.toastbits.kjna.c.CHeaderParser
-import dev.toastbits.kjna.binder.target.BinderTargetJvmJextract
+import dev.toastbits.kjna.binder.target.KJnaBindTargetJvmJextract
+import dev.toastbits.kjna.plugin.options.KJnaJextractRuntimeOptions
+import kotlin.text.Regex
 
-open class KJnaJextractGenerateTask: DefaultTask() {
+/**
+ * Generates Java bindings for native packages using a local Jextract binary.
+ *
+ * @property jextract_binary
+ * @property runtime_options generation options specific to Jextract. Can also be configured per-package.
+ */
+open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
+    // Inputs
+    override var symbol_filter: List<String> = emptyList()
+    override var macros: List<String> = emptyList()
+    override var args: List<String> = emptyList()
+
     @InputFile
     lateinit var jextract_binary: File
 
@@ -16,7 +29,7 @@ open class KJnaJextractGenerateTask: DefaultTask() {
 
     @Input
     lateinit var packages: KJnaGeneratePackagesConfiguration
-    
+
     @Input
     var override_jextract_loader: Boolean = false
 
@@ -31,48 +44,109 @@ open class KJnaJextractGenerateTask: DefaultTask() {
             output_directory.deleteRecursively()
         }
 
+        val temp_symbols_file: File by lazy { temporaryDir.resolve("jextract_symbols.txt").apply { createNewFile() } }
+
         for (pkg in packages.packages) {
+            val runtime_options: KJnaJextractRuntimeOptions =
+                pkg.jextract_runtime_options.combine(this)
+
+            val symbol_filter_regex: List<Regex> = runtime_options.symbol_filter.map { Regex(it) }
+
             for (header in pkg.headers) {
-                val target_package: String = BinderTargetJvmJextract.getJvmPackageName(pkg.package_name)
-                val args: MutableList<String> = mutableListOf(
-                    "--output", output_directory.absolutePath,
-                    "--target-package", target_package,
-                    "--header-class-name", header.class_name
-                )
+                val header_class_name: String = header.class_name ?: continue
+
+                val target_package: String = KJnaBindTargetJvmJextract.getJvmPackageName(pkg.package_name)
+                val args: MutableList<String> =
+                    mutableListOf(
+                        parser.getHeaderFile(header.header_path).absolutePath,
+                        "--target-package", target_package,
+                        "--header-class-name", header_class_name
+                    )
+
+                for (macro in runtime_options.macros) {
+                    args.add("--define-macro")
+                    args.add(macro)
+                }
+
+                for (arg in runtime_options.args) {
+                    args.add(arg)
+                }
+
+                for (include_dir in (pkg.include_dirs + include_dirs).distinct()) {
+                    args.add("--include-dir")
+                    args.add(include_dir)
+                }
 
                 for (library in pkg.libraries) {
                     args.add("--library")
                     args.add(library)
                 }
 
-                args.add(parser.getHeaderFile(header.header_path).absolutePath)
+                if (symbol_filter_regex.isNotEmpty()) {
+                    println("Dumping includes for $header...")
+                    executeJextractCommand(args + listOf("--dump-includes", temp_symbols_file.absolutePath))
 
-                executeJextractCommand(args)
+                    println("Filtering includes for $header...")
+                    val args_file_content: StringBuilder = StringBuilder()
+
+                    temp_symbols_file.useLines() { lines ->
+                        for (line in lines) {
+                            val start: Int = line.indexOf(' ')
+                            val end: Int = line.indexOf('#')
+                            if (start == -1 || end == -1 || start >= end) {
+                                continue
+                            }
+
+                            val symbol: String = line.substring(start + 1, end).trim()
+                            if (symbol_filter_regex.any { it.containsMatchIn(symbol) }) {
+                                args_file_content.append(line.substring(0, start))
+                                args_file_content.append(' ')
+                                args_file_content.appendLine(symbol)
+                            }
+                        }
+                    }
+
+                    check(args_file_content.isNotEmpty()) { "No symbols match filter for $header in $pkg" }
+
+                    temp_symbols_file.writeText(args_file_content.toString())
+                    args.add("@${temp_symbols_file.absolutePath}")
+                }
+
+                println("Extracting $header...")
+                executeJextractCommand(args + listOf("--output", output_directory.absolutePath))
 
                 if (header.override_jextract_loader ?: override_jextract_loader) {
                     val main_class_dir: File = output_directory.resolve(target_package.replace(".", "/"))
-                    val main_file: File = main_class_dir.resolve(header.class_name + ".java")
-                    check(main_file.isFile) { "${main_file.name} not found in $main_class_dir" }
 
-                    overrideJextractLoader(main_file, header.class_name)
+                    var cls: String? = header.class_name
+                    while (cls != null) {
+                        val main_file: File = main_class_dir.resolve(cls + ".java")
+                        check(main_file.isFile) { "${main_file.name} not found in $main_class_dir" }
+
+                        cls = overrideJextractLoader(main_file, cls)
+                    }
                 }
             }
         }
     }
 
     private fun executeJextractCommand(args: List<String>) {
-        println("Executing Jextract command: $args")
-
         val binary: File = jextract_binary
-        val process: Process = Runtime.getRuntime().exec((listOf(binary.absolutePath) + args).toTypedArray())
+
+        println("Executing Jextract command: $binary ${args.joinToString(" ")}")
+
+        val process: Process =
+            ProcessBuilder(listOf(binary.absolutePath) + args).start()
+
+        val stderr: String = process.errorStream.reader().readText()
 
         val result: Int = process.waitFor()
         if (result != 0) {
-            throw GradleException("Jextract failed ($result).\nExecutable: $binary\nArgs: ${args.joinToString(" ")}")
+            throw GradleException("Jextract failed ($result).\nCommand: $binary ${args.joinToString(" ")}\nstderr: $stderr")
         }
     }
 
-    private fun overrideJextractLoader(main_file: File, class_name: String) {
+    private fun overrideJextractLoader(main_file: File, class_name: String): String? {
         val content: MutableList<String> = main_file.readLines().toMutableList()
         val content_iterator: MutableListIterator<String> = content.listIterator()
 
@@ -90,7 +164,16 @@ open class KJnaJextractGenerateTask: DefaultTask() {
                     check(spacer == "") { "Unexpected shape '$spacer'" }
                     content_iterator.add("import java.nio.file.Path;")
                 }
-                else if (line == "public class $class_name {") {
+                else if (line.startsWith("public class $class_name ")) {
+                    val extends: Int = line.indexOf(" extends ")
+                    if (extends != -1) {
+                        val parent_end: Int = line.indexOf(' ', extends + 10)
+                        check(parent_end != -1) { line }
+
+                        val parent_class: String = line.substring(extends + 9, parent_end)
+                        return parent_class
+                    }
+
                     check(!class_found) { "Duplicate class '$class_name'" }
                     class_found = true
 
@@ -104,11 +187,10 @@ open class KJnaJextractGenerateTask: DefaultTask() {
                     symbol_lookup_found = true
 
                     content_iterator.set("    static SymbolLookup SYMBOL_LOOKUP = null;")
-                    
-                    check(content_iterator.next().trim() == ".or(SymbolLookup.loaderLookup())") { "Unexpected shape (1)" }
-                    content_iterator.remove()
-                    check(content_iterator.next().trim() == ".or(Linker.nativeLinker().defaultLookup());") { "Unexpected shape (2)" }
-                    content_iterator.remove()
+
+                    while (content_iterator.next().trim().startsWith(".or(")) {
+                        content_iterator.remove()
+                    }
                 }
             }
 
@@ -117,23 +199,32 @@ open class KJnaJextractGenerateTask: DefaultTask() {
             check(symbol_lookup_found) { "SymbolLookup not found" }
         }
         catch (e: Throwable) {
-            throw RuntimeException("Exception while processing main Jextract file ($main_file) on line ${content_iterator.previousIndex()}")
+            throw RuntimeException("Exception while processing main Jextract file ($main_file) on line ${content_iterator.previousIndex()}", e)
         }
 
         main_file.writeText(content.joinToString("\n"))
+        return null
     }
 
     companion object {
         const val NAME: String = "kjnaJextractGenerate"
 
-        private const val JEXTRACT_SYMBOL_LOOKUP_SETTER: String = 
+        private const val JEXTRACT_SYMBOL_LOOKUP_SETTER: String =
 """
-    public static void setLibraryByPath(Path path) {
-        SYMBOL_LOOKUP = SymbolLookup.libraryLookup(path, LIBRARY_ARENA);
+    public static void setLibraryLookupByPaths(Path first_path, Path... additional_paths) {
+        SymbolLookup lookup = SymbolLookup.libraryLookup(first_path, LIBRARY_ARENA);
+        for (Path path : additional_paths) {
+            lookup = lookup.or(SymbolLookup.libraryLookup(path, LIBRARY_ARENA));
+        }
+        SYMBOL_LOOKUP = lookup;
     }
 
-    public static void setLibraryByName(String name) {
-        SYMBOL_LOOKUP = SymbolLookup.libraryLookup(System.mapLibraryName(name), LIBRARY_ARENA);
+    public static void setLibraryLookupByNames(String first_name, String... additional_names) {
+        SymbolLookup lookup = SymbolLookup.libraryLookup(System.mapLibraryName(first_name), LIBRARY_ARENA);
+        for (String name : additional_names) {
+            lookup = lookup.or(SymbolLookup.libraryLookup(System.mapLibraryName(name), LIBRARY_ARENA));
+        }
+        SYMBOL_LOOKUP = lookup;
     }
 """
     }

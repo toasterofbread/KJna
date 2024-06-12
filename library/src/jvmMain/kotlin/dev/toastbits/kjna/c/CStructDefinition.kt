@@ -10,7 +10,7 @@ data class CStructDefinition(
     val fields: Map<String, CValueType>
 )
 
-fun PackageGenerationScope.parseStructDefinition(members: List<CParser.StructDeclarationContext>): CStructDefinition {
+internal fun PackageGenerationScope.parseStructDefinition(members: List<CParser.StructDeclarationContext>): CStructDefinition {
     val fields: MutableMap<String, CValueType> = mutableMapOf()
 
     for (member in members) {

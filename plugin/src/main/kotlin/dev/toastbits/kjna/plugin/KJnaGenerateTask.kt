@@ -11,65 +11,64 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
 import dev.toastbits.kjna.c.CHeaderParser
-import dev.toastbits.kjna.c.CTypeDef
+import dev.toastbits.kjna.c.CTypedef
+import dev.toastbits.kjna.c.CType
+import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.binder.KJnaBinder
-import dev.toastbits.kjna.binder.target.BinderTargetShared
-import dev.toastbits.kjna.binder.target.BinderTargetJvmJextract
-import dev.toastbits.kjna.binder.target.BinderTargetNativeCinterop
-import dev.toastbits.kjna.binder.target.BinderTargetDisabled
-import dev.toastbits.kjna.binder.target.KJnaBinderTarget
+import dev.toastbits.kjna.binder.target.KJnaBindTarget
+import dev.toastbits.kjna.binder.target.KJnaBindTargetShared
+import dev.toastbits.kjna.binder.target.KJnaBindTargetJvmJextract
+import dev.toastbits.kjna.binder.target.KJnaBindTargetNativeCinterop
+import dev.toastbits.kjna.binder.target.KJnaBindTargetDisabled
+import dev.toastbits.kjna.plugin.options.KJnaGenerationOptions
+import dev.toastbits.kjna.plugin.options.KJnaJextractBinaryOptions
+import dev.toastbits.kjna.plugin.options.KJnaJextractRuntimeOptions
+import dev.toastbits.kjna.plugin.options.KJnaCinteropRuntimeOptions
 import javax.inject.Inject
+import withIndex
 
-abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
+abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
     // Inputs
     override var packages: KJnaGeneratePackagesConfiguration = KJnaGeneratePackagesConfiguration()
-    override var build_targets: List<KJnaBuildTarget> = KJnaBuildTarget.entries.toList()
+    override var build_targets: List<KJnaBuildTarget> = KJnaBuildTarget.DEFAULT_TARGETS
+    override var disabled_build_targets: List<KJnaBuildTarget> = emptyList()
     override var include_dirs: List<String> =
         listOf(
             "/usr/include/",
-            "/usr/local/include/",
-            "/usr/include/linux/",
-            "C:/msys64/mingw64/include"
+            "C:/msys64/mingw64/include/"
         )
+    override var parser_include_dirs: List<String> = emptyList()
     override var override_jextract_loader: Boolean = false
 
     // Outputs
-    private val build_dir: File = project.layout.buildDirectory.dir("kjna").get().asFile
-    override val common_output_dir: File = build_dir.resolve("src/common").apply { mkdirs() }
-    override val jvm_output_dir: File = build_dir.resolve("src/jvm").apply { mkdirs() }
-    override val java_output_dir: File = project.file("src/jvmMain/java/kjna").apply { mkdirs() }
-    override val native_output_dir: File = build_dir.resolve("src/native").apply { mkdirs() }
-    override val native_def_output_dir: File = build_dir.resolve("def").apply { mkdirs() }
+    private val base_build_dir: File = project.layout.buildDirectory.dir("kjna").get().asFile
+    override var source_output_dir: File = base_build_dir.resolve("src").apply { mkdirs() }
+    override var java_output_dir: File = project.file("src/jvmMain/java/kjna").apply { mkdirs() }
+    override var native_def_output_dir: File = base_build_dir.resolve("def").apply { mkdirs() }
 
-    var jextract_binary: File?
-        @Internal
-        get() = prepareJextract.jextract_binary
-        set(value) { prepareJextract.jextract_binary = value }
-    var jextract_archive_url: String
-        @Internal
-        get() = prepareJextract.jextract_archive_url
-        set(value) { prepareJextract.jextract_archive_url = value }
-    var jextract_archive_exe_path: String
-        @Internal
-        get() = prepareJextract.jextract_archive_exe_path
-        set(value) { prepareJextract.jextract_archive_exe_path = value }
-    var jextract_archive_extract_directory: File
-        @Internal
-        get() = prepareJextract.jextract_archive_extract_directory
-        set(value) { prepareJextract.jextract_archive_extract_directory = value }
+    @Internal
+    internal fun getJextractOptions(): KJnaJextractBinaryOptions = prepareJextract
+    @Internal
+    internal fun getJextractRuntimeOptions(): KJnaJextractRuntimeOptions = jextractGenerate
+    @Internal
+    internal fun getCinteropRuntimeOptions(): KJnaCinteropRuntimeOptions = configureNativeDefs
 
     @get:Internal
-    internal val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
+    private val prepareJextract: KJnaPrepareJextractTask = project.tasks.register(KJnaPrepareJextractTask.NAME, KJnaPrepareJextractTask::class.java).get()
     @get:Internal
-    internal val prepareJextract: KJnaPrepareJextractTask = project.tasks.register(KJnaPrepareJextractTask.NAME, KJnaPrepareJextractTask::class.java).get()
+    private val jextractGenerate: KJnaJextractGenerateTask = project.tasks.register(KJnaJextractGenerateTask.NAME, KJnaJextractGenerateTask::class.java).get()
     @get:Internal
-    internal val jextractGenerate: KJnaJextractGenerateTask = project.tasks.register(KJnaJextractGenerateTask.NAME, KJnaJextractGenerateTask::class.java).get()
+    private val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
+
+    fun setNativeDefFiles(def_files: List<List<File>>) {
+        configureNativeDefs.native_def_files = def_files
+    }
 
     init {
-        description = "Generate binding files for the configured packages and targets"
+        description = "Generate binding files for the configured packages and targets."
 
         project.afterEvaluate {
-            if (build_targets.contains(KJnaBuildTarget.NATIVE)) {
+            if (build_targets.any { it.isNative() }) {
                 configureNativeDefs.packages = packages
                 configureNativeDefs.include_dirs = include_dirs
                 configureNativeDefs.output_directory = native_def_output_dir
@@ -91,73 +90,108 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationConfig {
 
     @TaskAction
     fun generateKJnaBindings() {
-        val bind_targets: List<KJnaBinderTarget> =
-            build_targets.map { target ->
-                when (target) {
-                    KJnaBuildTarget.SHARED -> KJnaBinderTarget.SHARED
-                    KJnaBuildTarget.JVM -> KJnaBinderTarget.JVM_JEXTRACT
-                    KJnaBuildTarget.NATIVE -> KJnaBinderTarget.NATIVE_CINTEROP
-                }
-            }
+        val enabled_targets: List<KJnaBuildTarget> = build_targets.normalised()
+        val disabled_targets: List<KJnaBuildTarget> = disabled_build_targets.normalised()
 
-        if (bind_targets.isEmpty()) {
+        if (enabled_targets.isEmpty() && disabled_targets.isEmpty()) {
             return
         }
 
-        val parser: CHeaderParser = CHeaderParser(include_dirs)
-        for (pkg in packages.packages) {
-            parser.parse(pkg.headers.map { it.header_path })
+        check(!disabled_targets.contains(KJnaBuildTarget.SHARED)) { "Shared (common) target cannot be disabled as it has no implementation" }
+
+        val targets_intersection: Set<KJnaBuildTarget> = enabled_targets.intersect(disabled_targets)
+        check(targets_intersection.isEmpty()) { "The following build targets were specified as both enabled and disabled: ${targets_intersection}" }
+
+        val bind_targets: Map<KJnaBuildTarget, KJnaBindTarget> = (
+            enabled_targets.associateWith { target ->
+                when (target) {
+                    KJnaBuildTarget.SHARED -> KJnaBindTargetShared()
+                    KJnaBuildTarget.JVM -> KJnaBindTargetJvmJextract()
+                    KJnaBuildTarget.NATIVE_ALL,
+                    KJnaBuildTarget.NATIVE_LINUX_X64,
+                    KJnaBuildTarget.NATIVE_LINUX_ARM64,
+                    KJnaBuildTarget.NATIVE_MINGW_X64 -> KJnaBindTargetNativeCinterop()
+                }
+            }
+            + disabled_targets.associateWith { KJnaBindTargetDisabled() }
+        )
+
+        val parser: CHeaderParser = CHeaderParser((include_dirs + parser_include_dirs).distinct())
+        val parsed_packages: List<CHeaderParser.PackageInfo> = packages.packages.map { pkg ->
+            println("Parsing headers for $pkg...")
+
+            return@map parser.parsePackage(
+                headers = pkg.headers.map { it.header_path },
+                extra_include_dirs = pkg.include_dirs,
+                ignore_headers = pkg.parser_ignore_headers,
+                typedef_overrides = KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)
+            )
         }
 
-        val bindings: List<KJnaBinder.GeneratedBindings> =
-            packages.packages.map { pkg ->
+        val package_bindings: List<KJnaBinder.GeneratedBindings> =
+            packages.packages.mapIndexed { index, pkg ->
+                check(!pkg.disabled_targets.contains(KJnaBuildTarget.SHARED)) { "Shared (common) target cannot be disabled on package $pkg" }
+                val package_info: CHeaderParser.PackageInfo = parsed_packages[index]
+
                 val header_bindings: List<KJnaBinder.Header> =
                     pkg.headers.map { header ->
+                        val header_absolute_path: String = parser.getHeaderFile(header.header_path).absolutePath
+
+                        val additional_functions: MutableMap<String, CFunctionDeclaration> = mutableMapOf()
+                        for ((package_header_path, package_header) in package_info.headers) {
+                            if (package_header_path == header_absolute_path) {
+                                continue
+                            }
+
+                            if (header.bind_all_includes || header.bind_includes.any { package_header_path.endsWith(it) }) {
+                                for ((name, function) in package_header.functions) {
+                                    check(!additional_functions.contains(name)) { "Conflicting function name '$name'" }
+                                    additional_functions[name] = function
+                                }
+                            }
+                        }
+
                         KJnaBinder.Header(
                             class_name = header.class_name,
-                            package_name = pkg.package_name,
-                            info = parser.getHeaderByInclude(header.header_path)
+                            absolute_path = header_absolute_path,
+                            exclude_functions = header.exclude_functions,
+                            additional_functions = additional_functions
                         )
                     }
 
-                val typedefs: MutableMap<String, CTypeDef> = parser.getAllTypedefsMap().toMutableMap()
-                for ((typedef, type) in pkg.overrides.parseTypedefTypes()) {
-                    typedefs[typedef] = CTypeDef(typedef, type)
-                }
+                val struct_field_ignored_types: List<CType> = KJnaGeneratePackagesConfiguration.PackageOverrides.getStructFieldIgnoredTyped(pkg.overrides)
 
-                val binder: KJnaBinder = KJnaBinder(pkg.package_name, header_bindings, typedefs)
-
-                if (pkg.enabled) {
-                    return@map binder.generateBindings(bind_targets)
-                }
-
-                val targets: List<KJnaBinderTarget> = bind_targets.map { if (it is BinderTargetShared) it else KJnaBinderTarget.DISABLED }.distinct()
-                val result: KJnaBinder.GeneratedBindings = binder.generateBindings(targets)
-
-                return@map result.copy(
-                    files = bind_targets.associateWith { target ->
-                        if (target is BinderTargetShared) result.files[target]!!
-                        else result.files[KJnaBinderTarget.DISABLED]!!
+                val binder: KJnaBinder =
+                    object : KJnaBinder(
+                        pkg.package_name,
+                        package_info,
+                        header_bindings,
+                        package_info.typedefs,
+                        anonymous_struct_indices = pkg.overrides.anonymous_struct_indices,
+                        typedef_overrides = KJnaGeneratePackagesConfiguration.PackageOverrides.parseTypedefTypes(pkg.overrides)
+                    ) {
+                        override fun shouldIncludeStructField(name: String, type: CType, struct: CType.Struct): Boolean =
+                            !struct_field_ignored_types.contains(type)
                     }
-                )
+
+                val package_targets: List<KJnaBindTarget> =
+                    bind_targets.entries.map { (build_target, bind_target) ->
+                        if (!pkg.enabled || pkg.disabled_targets.contains(build_target)) KJnaBindTargetDisabled() else bind_target
+                    }
+
+                return@mapIndexed binder.generateBindings(package_targets)
             }
 
-        for (target in bind_targets) {
-            val target_directory: File =
-                when (target) {
-                    is BinderTargetShared -> common_output_dir
-                    is BinderTargetJvmJextract -> jvm_output_dir
-                    is BinderTargetNativeCinterop -> native_output_dir
-                    is BinderTargetDisabled -> throw IllegalStateException()
-                }.resolve("kotlin")
+        for ((target_index, build_target, bind_target) in bind_targets.withIndex()) {
+            val target_directory: File = build_target.getSourceDirectory(source_output_dir)
 
             if (target_directory.exists()) {
                 target_directory.deleteRecursively()
             }
 
-            for (binding in bindings) {
-                for ((cls, content) in binding.files[target]!!) {
-                    val file: File = target_directory.resolve(cls.replace(".", "/") + '.' + target.getSourceFileExtension())
+            for (binding in package_bindings) {
+                for ((cls, content) in binding.files[target_index]) {
+                    val file: File = target_directory.resolve(cls.replace(".", "/") + '.' + build_target.getSourceFileExtension())
                     if (!file.exists()) {
                         file.ensureParentDirsCreated()
                         file.createNewFile()

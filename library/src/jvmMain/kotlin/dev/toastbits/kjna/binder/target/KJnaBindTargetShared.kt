@@ -4,14 +4,16 @@ import dev.toastbits.kjna.c.CFunctionDeclaration
 import dev.toastbits.kjna.c.CType
 import dev.toastbits.kjna.c.CValueType
 import dev.toastbits.kjna.c.resolve
+import dev.toastbits.kjna.c.fullyResolve
 import dev.toastbits.kjna.binder.BindingGenerator
 import dev.toastbits.kjna.binder.KJnaBinder
+import dev.toastbits.kjna.binder.Constants
 import withIndex
 
-class BinderTargetShared(): KJnaBinderTarget {
+class KJnaBindTargetShared(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("expect")
 
-    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header: KJnaBinder.Header, context: BindingGenerator.GenerationScope): String {
+    override fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String {
         return function_header
     }
 
@@ -19,10 +21,8 @@ class BinderTargetShared(): KJnaBinderTarget {
         return "()"
     }
 
-    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, context: BindingGenerator.GenerationScope): String {
-        val actual_type: CValueType =
-            if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
-            else type
+    override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, struct_name: String, scope_name: String?, context: BindingGenerator.GenerationScope): String {
+        val actual_type: CValueType = type.fullyResolve(context.binder)
 
         val assignable: Boolean =
             actual_type.type !is CType.Union && ((type.pointer_depth + actual_type.pointer_depth) > 0 || actual_type.type !is CType.Struct)
@@ -31,17 +31,15 @@ class BinderTargetShared(): KJnaBinderTarget {
             if (assignable) "var"
             else "val"
 
-        return "$field_type $name: $type_name"
+        return "$field_type ${Constants.formatKotlinFieldName(name)}: $type_name"
     }
 
     override fun implementUnionConstructor(union: CType.Union, name: String, context: BindingGenerator.GenerationScope): String? {
         return null
     }
 
-    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String, context: BindingGenerator.GenerationScope): String {
-        val actual_type: CValueType =
-            if (type.type is CType.TypeDef) type.type.resolve(context.binder.typedefs)
-            else type
+    override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String?, context: BindingGenerator.GenerationScope): String {
+        val actual_type: CValueType = type.fullyResolve(context.binder)
 
         val field_type: String =
             if (actual_type.type is CType.Union) "val"
@@ -70,8 +68,14 @@ class BinderTargetShared(): KJnaBinderTarget {
                 if (index + 1 != enm.values.size) {
                     append(',')
                 }
+                else {
+                    append(';')
+                }
                 appendLine()
             }
+
+            appendLine()
+            appendLine("    companion object")
 
             append('}')
         }

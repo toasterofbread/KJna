@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import dev.toastbits.kjna.runtime.KJnaTypedPointer
+import dev.toastbits.kjna.runtime.KJnaFunctionPointer
 import kjna.struct.mpv_event
 import kjna.struct.mpv_handle
 
@@ -19,9 +20,13 @@ fun testNativeMpvAccess() {
     val client: KJnaTypedPointer<mpv_handle> = mpv.mpv_create_client(handle, "Name")!!
 
     println("Setting wakeup callback")
-    mpv.mpv_set_wakeup_callback(client) {
-        println("Wakeup callback called")
-    }
+    mpv.mpv_set_wakeup_callback(
+        client,
+        KJnaFunctionPointer.createDataParamFunction0(),
+        KJnaFunctionPointer.getDataParam {
+            println("Wakeup callback called")
+        }
+    )
 
     runBlocking {
         launch(Dispatchers.IO) {

@@ -3,124 +3,280 @@ package dev.toastbits.kjna.c
 import dev.toastbits.kjna.grammar.*
 import dev.toastbits.kjna.c.*
 import java.io.File
-import org.antlr.v4.kotlinruntime.CharStreams
 import org.antlr.v4.kotlinruntime.CharStream
+import org.antlr.v4.kotlinruntime.CharStreams
 import org.antlr.v4.kotlinruntime.CommonTokenStream
 import org.antlr.v4.kotlinruntime.tree.*
 import org.antlr.v4.kotlinruntime.ParserRuleContext
+import org.antlr.v4.kotlinruntime.misc.Interval
+import org.anarres.cpp.*
 import java.nio.file.Path
 import java.nio.file.Paths
 
 class CHeaderParser(include_dirs: List<String>) {
-    data class HeaderInfo(
-        val absolute_path: String,
-        val functions: List<CFunctionDeclaration>,
-        val structs: List<CType.Struct>,
-        val typedefs: List<CTypeDef>
+    data class PackageInfo(
+        val headers: Map<String, Header>,
+        val structs: Map<String, CType.Struct>,
+        val typedefs: Map<String, CTypedef>
     ) {
-        override fun toString(): String =
-            "HeaderInfo(absolute_path=$absolute_path, functions: ${functions.size}), structs: ${structs.size}, typedefs: ${typedefs.size}"
-    }
-
-    private val parsed_headers: MutableMap<String, HeaderInfo> = mutableMapOf()
-    val include_dirs: List<Path> = include_dirs.map { Paths.get(it) }
-
-    fun getAllHeaders(): List<HeaderInfo> = parsed_headers.values.toList()
-    fun getHeaderByInclude(header: String): HeaderInfo = parsed_headers[header]!!
-
-    fun getAllTypedefs(): List<CTypeDef> = getAllHeaders().flatMap { it.typedefs }
-    fun getAllTypedefsMap(): Map<String, CTypeDef> = getAllTypedefs().associate { it.name to it }
-    fun getAllFunctions(): List<CFunctionDeclaration> = getAllHeaders().flatMap { it.functions }
-
-    fun parse(headers: List<String>) {
-        val package_scope: PackageGenerationScope = PackageGenerationScope()
-        val all_headers: MutableList<String> = headers.distinct().toMutableList()
-
-        var included_headers: List<String> = parseIncludedFiles(headers)
-        while (included_headers.isNotEmpty()) {
-            all_headers.addAll(included_headers)
-            included_headers = parseIncludedFiles(included_headers).filter { !all_headers.contains(it) }
+        data class Header(
+            val functions: Map<String, CFunctionDeclaration>
+        ) {
+            override fun toString(): String =
+                "Header(functions: ${functions.size})"
         }
 
-        for (header in all_headers) {
-            val functions: MutableList<CFunctionDeclaration> = mutableListOf()
-            val structs: MutableList<CType.Struct> = mutableListOf()
-            val typedefs: MutableList<CTypeDef> = mutableListOf()
+        override fun toString(): String =
+            "PackageInfo(headers: $headers), structs: ${structs.size}, typedefs: ${typedefs.size}"
+    }
 
-            val file: File = getHeaderFile(header)
-            println("Parsing ${file.absolutePath}")
+    private val parsed_header_functions: MutableMap<String, MutableMap<String, CFunctionDeclaration>> = mutableMapOf()
+    private val parsed_structs: MutableMap<String, CType.Struct> = mutableMapOf()
+    private val parsed_typedefs: MutableMap<String, CTypedef> = mutableMapOf()
 
-            val input: CharStream = file.inputStream().use { stream ->
-                CharStreams.fromStream(stream)
+    private val include_dirs: List<Path> = include_dirs.map { Paths.get(it) }
+    private var all_include_dirs: List<Path> = this.include_dirs
+    private var typedef_overrides: Map<String, CValueType> = emptyMap()
+
+    fun getHeaderByInclude(pkg: PackageInfo, header: String): PackageInfo.Header = pkg.headers[getHeaderFile(header).absolutePath]!!
+
+    fun parsePackage(
+        headers: List<String>,
+        extra_include_dirs: List<String> = emptyList(),
+        ignore_headers: List<String> = emptyList(),
+        typedef_overrides: Map<String, CValueType> = emptyMap()
+    ): PackageInfo = withExtras(extra_include_dirs, typedef_overrides) {
+        parsed_header_functions.clear()
+        parsed_structs.clear()
+        parsed_typedefs.clear()
+
+        val file_content: StringBuilder by lazy { StringBuilder() }
+        val preprocessor_listener: PreprocessorListener =
+            object : DefaultPreprocessorListener() {
+                override fun handleWarning(source: Source, line: Int, column: Int, msg: String) {
+                    println("Warning: $source $line:$column $msg")
+                }
             }
 
-            val lexer: CLexer = CLexer(input)
-            val tokens: CommonTokenStream = CommonTokenStream(lexer)
+        val package_scope: PackageGenerationScope = PackageGenerationScope(this)
 
-            val parser: CParser = CParser(tokens)
-            parser.errorHandler = SilentErrorStrategy()
+        for (header_path in headers) {
+            val file: File = getHeaderFile(header_path)
+            println("Parsing $header_path at ${file.absolutePath}")
 
-            val tree: CParser.TranslationUnitContext = parser.translationUnit()
+            file_content.clear()
 
-            for (declaration in tree.externalDeclaration()) {
-                val function: CFunctionDeclaration? = with (package_scope) { parseFunctionDeclaration(declaration) }
-                if (function != null) {
-                    functions.add(function)
-                    continue
-                }
-
-                val typedef: CTypeDef? = with (package_scope) { parseTypedefDeclaration(declaration) }
-                if (typedef != null) {
-                    typedefs.add(typedef)
-
-                    if (typedef.type.type is CType.Struct) {
-                        structs.add(typedef.type.type)
+            val preprocessor =
+                object : Preprocessor() {
+                    init {
+                        listener = preprocessor_listener
                     }
 
-                    continue
+                    override public fun getSource(): Source? = super.source
+
+                    override fun include(path: Iterable<String>, name: String): Boolean {
+                        val path: List<String> = path.toList()
+                        val include_path: String =
+                            if (path.isEmpty()) name
+                            else (path.joinToString("/") + '/' + name)
+
+                        var header: File = getHeaderFileOrNull(include_path) ?: return false
+                        include(fileSystem.getFile(header.absolutePath))
+
+                        return true
+                    }
                 }
+
+            preprocessor.addInput(
+                object : LexerSource(file.reader(), true) {
+                    override fun getPath(): String = file.absolutePath
+                }
+            )
+
+            var token: Token
+            var current_source_path: String? = null
+
+            while (true) {
+                token = preprocessor.token()
+
+                if (current_source_path == null) {
+                    current_source_path = preprocessor.source!!.path!!
+                }
+
+                if (token.type == Token.EOF || preprocessor.source!!.path != current_source_path) {
+                    if (file_content.isNotBlank()) {
+                        val current_header_path: String =
+                            if (token.type == Token.EOF) current_source_path!!
+                            else current_source_path!!
+
+                        try {
+                            package_scope.parseFileContent(
+                                source = CharSequenceCharStream(file_content),
+                                header_path = current_header_path,
+                                is_main_header = current_header_path == file.absolutePath
+                            )
+                        }
+                        catch (e: Throwable) {
+                            throw RuntimeException("parseFileContent failed ($current_header_path)", e)
+                        }
+                    }
+
+                    if (token.type == Token.EOF) {
+                        break
+                    }
+
+                    file_content.clear()
+                    current_source_path = preprocessor.source!!.path!!
+                }
+
+                file_content.append(token.text)
             }
 
-            parsed_headers[header] = HeaderInfo(file.absolutePath, functions, structs, typedefs)
+            preprocessor.close()
         }
+
+        return@withExtras PackageInfo(
+            headers = parsed_header_functions.entries.associate { (header, functions) -> header to PackageInfo.Header(functions = functions) },
+            structs = parsed_structs.toMap(),
+            typedefs = parsed_typedefs.toMap()
+        )
     }
 
-    fun getHeaderFile(path: String): File {
+    fun getHeaderFileOrNull(path: String): File? {
         var file: File = File(path)
         if (file.isFile()) {
             return file
         }
 
-        for (dir in include_dirs) {
+        for (dir in all_include_dirs) {
             file = dir.resolve(path).toFile()
             if (file.isFile()) {
                 return file
             }
         }
 
-        throw RuntimeException("Could not find header file for '$path' relatively or in $include_dirs")
+        return null
     }
 
-    private fun parseIncludedFiles(from: Collection<String>): List<String> =
-        from.flatMap { file ->
-            getHeaderFile(file).readLines().mapNotNull {
-                val line: String = it.trim()
-                if (!line.startsWith("#include ")) {
-                    return@mapNotNull null
+    fun getHeaderFile(path: String): File =
+        getHeaderFileOrNull(path) ?: throw RuntimeException("Could not find header file for '$path' relatively or in $all_include_dirs")
+
+    internal fun getTypedef(name: String): CTypedef? = typedef_overrides[name]?.let { CTypedef(name, it) } ?: parsed_typedefs[name]
+
+    internal fun getConstantExpressionValue(name: String): Int? {
+        for (type in typedef_overrides.values) {
+            if (type.type is CType.Enum) {
+                for ((key, value) in type.type.values) {
+                    if (key == name) {
+                        return value
+                    }
+                }
+            }
+        }
+        for (typedef in parsed_typedefs.values) {
+            if (typedef.type.type is CType.Enum) {
+                for ((key, value) in typedef.type.type.values) {
+                    if (key == name) {
+                        return value
+                    }
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun <T> withExtras(
+        extra_include_dirs: List<String>,
+        typedef_overrides: Map<String, CValueType>,
+        action: () -> T
+    ): T {
+        this.typedef_overrides = typedef_overrides
+        all_include_dirs = include_dirs + extra_include_dirs.map { Paths.get(it) }
+        try {
+            return action()
+        }
+        finally {
+            all_include_dirs = include_dirs
+            this.typedef_overrides = emptyMap()
+        }
+    }
+
+    private fun PackageGenerationScope.parseFileContent(source: CharStream, header_path: String, is_main_header: Boolean) {
+        val lexer: CLexer = CLexer(source)
+        val tokens: CommonTokenStream = CommonTokenStream(lexer)
+
+        val parser: CParser = CParser(tokens)
+        parser.errorHandler = SilentErrorStrategy()
+
+        val tree: CParser.TranslationUnitContext = parser.translationUnit()
+
+        val functions: MutableMap<String, CFunctionDeclaration> = parsed_header_functions.getOrPut(header_path) { mutableMapOf() }
+
+        for (declaration in tree.externalDeclaration()) {
+            val typedef: CTypedef? =
+                try {
+                    parseTypedefDeclaration(declaration)
+                }
+                catch (e: Throwable) {
+                    throw RuntimeException("parseTypedefDeclaration failed (${declaration.text})", e)
                 }
 
-                val start: Char = line[9]
-                val end: Char =
-                    when (start) {
-                        '"' -> '"'
-                        '<' -> '>'
-                        else -> throw NotImplementedError(line)
+            if (typedef != null) {
+                val existing: CTypedef? = parsed_typedefs[typedef.name]
+                if ((existing != null && typedef.type.type.isForwardDeclaration()) || existing == typedef) {
+                    continue
+                }
+
+                check(existing == null || existing.type.type.isForwardDeclaration()) {
+                    "Redeclaration of $typedef (existing=$existing) along $header_path"
+                }
+
+                parsed_typedefs[typedef.name] = typedef
+
+                val type_name: String? =
+                    when (typedef.type.type) {
+                        is CType.Enum -> typedef.type.type.name
+                        is CType.Struct -> typedef.type.type.name
+                        is CType.Union -> typedef.type.type.name
+                        else -> null
                     }
 
-                val end_index: Int = line.indexOf(end, 10)
-                check(end_index != -1) { line }
+                if (type_name != null && type_name != typedef.name && !parsed_typedefs.contains(type_name)) {
+                    parsed_typedefs[type_name] = typedef
+                }
 
-                return@mapNotNull line.substring(10, end_index)
+                if (is_main_header && typedef.type.type is CType.Struct) {
+                    parsed_structs[typedef.name] = typedef.type.type
+                }
+
+                continue
             }
-        }.filter { !from.contains(it) }.distinct()
+
+            val function: CFunctionDeclaration? = declaration.declaration()?.let { parseFunctionDeclaration(it) }
+            if (function != null) {
+                val existing: CFunctionDeclaration? = functions[function.name]
+                check(existing == null || existing == function) { "Redeclaration of $function (existing=$existing) along $header_path" }
+                functions[function.name] = function
+                continue
+            }
+        }
+    }
+}
+
+private fun <K, V, I> Collection<I>.flattenMaps(onConflict: ((key: K, value: V, existing_value: V) -> V)? = null, getMap: (I) -> Map<K, V>): Map<K, V> {
+    val flat_map: MutableMap<K, V> = mutableMapOf()
+    for (map in this) {
+        for ((key, value) in getMap(map)) {
+            if (onConflict != null && flat_map.contains(key)) {
+                @Suppress("UNCHECKED_CAST")
+                val existing: V = flat_map[key] as V
+                flat_map[key] = onConflict(key, value, existing)
+            }
+            else {
+                flat_map[key] = value
+            }
+        }
+    }
+    return flat_map
 }

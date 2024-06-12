@@ -31,8 +31,6 @@ kotlin {
                 }
             }
         }
-
-        val commonMain by getting
     }
 }
 
