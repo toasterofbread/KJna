@@ -259,7 +259,21 @@ private fun parseConstantExpression(expression: String, values: Map<String, Int>
     }
 }
 
-private enum class Operation {
+private enum class SingleOperation {
+    NOT;
+
+    val kw: String get() =
+        when (this) {
+            NOT -> "~"
+        }
+
+    fun perform(value: Int): Int =
+        when (this) {
+            NOT -> value.inv()
+        }
+}
+
+private enum class DoubleOperation {
     SHIFT_L,
     SHIFT_R,
     AND,
@@ -363,13 +377,18 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
                 }
             }
 
+            val between: IntRange = start until i
+            if (between.size > 0 && between.any { !get(it).isWhitespace() }) {
+                seq.add(between)
+            }
+
             seq.add(i + 1 until end)
             i = end + 1
             start = i
             continue
         }
 
-        for (op in Operation.entries) {
+        for (op in DoubleOperation.entries) {
             if (region.contains(i + op.kw.length - 1) && regionMatches(i, op.kw, 0, op.kw.length)) {
                 val between: IntRange = start until i
                 if (between.any { !get(it).isWhitespace() }) {
@@ -396,16 +415,36 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
 
     try {
         var a: Int? = null
-        var op: Operation? = null
+        var op: DoubleOperation? = null
 
         while (seq.isNotEmpty()) {
-            val part: Any = seq.removeFirst()
-            if (seq.isEmpty()) {
-                check(part is IntRange) { part }
-                return tryAllOperations(values, parser, depth + 1, part)
+            var part: Any = seq.removeFirst()
+
+            check(part != region) { "Part $part is the entire region" }
+
+            if (part is IntRange) {
+                val string: String = substring(part)
+                val operation: SingleOperation? = SingleOperation.entries.firstOrNull { string == it.kw }
+                if (operation != null) {
+                    val value: Int = when (val first: Any = seq.removeFirst()) {
+                        is Int -> first
+                        is IntRange -> tryAllOperations(values, parser, depth + 1, first) ?: throw NullPointerException(substring(first))
+                        else -> throw IllegalStateException("$first (${first::class})")
+                    }
+
+                    part = operation.perform(value)
+                    if (seq.isEmpty()) {
+                        return part
+                    }
+                }
             }
 
             if (a == null) {
+                if (seq.isEmpty()) {
+                    check(part is IntRange) { part }
+                    return tryAllOperations(values, parser, depth + 1, part)
+                }
+
                 a = when (part) {
                     is Int -> part
                     is IntRange -> tryAllOperations(values, parser, depth + 1, part)
@@ -413,7 +452,7 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
                 }
             }
             else if (op == null) {
-                check(part is Operation)
+                check(part is DoubleOperation)
                 op = part
             }
             else {
