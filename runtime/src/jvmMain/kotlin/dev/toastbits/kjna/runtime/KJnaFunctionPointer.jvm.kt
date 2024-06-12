@@ -66,7 +66,7 @@ actual class KJnaFunctionPointer(val function: MemorySegment) {
             return KJnaFunctionPointer.ofMethodHandle(handle, descriptor)
         }
 
-        @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE")
+        @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "UNCHECKED_CAST")
         inline fun <reified T: Any, reified P0: Any> ofKotlinFunction1(noinline function: (P0) -> T): KJnaFunctionPointer {
             val method_name: String
             val method_type: MethodType
