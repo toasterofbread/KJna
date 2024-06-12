@@ -32,7 +32,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
             val arena_name: String = "_arena"
             var arena_used: Boolean = false
 
-            var function_body: String = buildString {
+            var function_body: String = run { buildString {
                 if (return_type != null) {
                     append("return ")
                 }
@@ -73,6 +73,9 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                     }
 
                     val actual_type: CValueType = param.type.fullyResolve(context.binder)
+                    if (actual_type.type == CType.Primitive.VALIST) {
+                        return@run "TODO(\"Variadic function\")"
+                    }
 
                     val param_name: String = param_names[index]
 
@@ -100,16 +103,8 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                     }
 
                     if (actual_type.type is CType.Function) {
-                        val FunctionWrapper: String = context.importRuntimeType(RuntimeType.FunctionWrapper)
-                        context.importFromCoordinates("java.lang.foreign.FunctionDescriptor")
-                        context.importFromCoordinates("java.lang.invoke.MethodHandles")
-                        context.importFromCoordinates("java.lang.invoke.MethodType")
-
-                        append("run { ")
-                        append("val handle = MethodHandles.lookup().bind($FunctionWrapper(cb), \"${RuntimeType.FunctionWrapper.invoke}\", MethodType.methodType(Void.TYPE)); ")
-                        append("val desc = FunctionDescriptor.ofVoid(); ")
-                        append("return@run $LINKER_NAME.upcallStub(handle, desc, $FUNCTION_ARENA_NAME) ")
-                        append('}')
+                        context.importFromCoordinates("java.lang.foreign.MemorySegment")
+                        append("$param_name?.${RuntimeType.KJnaFunctionPointer.jvm_function} ?: MemorySegment.NULL")
 
                         if (index + 1 != function.parameters.size) {
                             append(", ")
@@ -119,39 +114,37 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
 
                     append(param_name)
 
-                    for (i in 0 until if (param.type.type.isChar()) param.type.pointer_depth - 1 else param.type.pointer_depth) {
-                        if (param_type.last() == '?') {
-                            append('?')
-                        }
-                        append(".pointer")
-                    }
+                    if (actual_type.pointer_depth == 0) {
+                        if (actual_type.type is CType.Enum) {
+                            if (param_type.last() == '?') {
+                                append('?')
+                            }
 
-                    // if (actual_type.type is CType.Struct) {
-                    //     val jextract_type_alias: String = context.importJextractStruct(actual_type.type)
-                    //     context.addContainerAnnotation("@file:Suppress(\"UNCHECKED_CAST\")")
-                    //     append(" as CPointer<$jextract_type_alias>")
-                    //     if (param_type.last() == '?') {
-                    //         append('?')
-                    //     }
-                    // }
-                    if (actual_type.type is CType.Enum) {
-                        if (param_type.last() == '?') {
-                            append('?')
+                            context.importFromCoordinates(Constants.ENUM_PACKAGE_NAME + '.' + ENUM_CONVERT_FUNCTION_TO_JVM)
+                            append(".$ENUM_CONVERT_FUNCTION_TO_JVM()")
                         }
-
-                        append('.')
-                        append(KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM)
+                        else if (actual_type.type == CType.Primitive.U_LONG || actual_type.type == CType.Primitive.U_LONG_LONG) {
+                            append(".toLong()")
+                        }
+                        else if (actual_type.type == CType.Primitive.U_INT) {
+                            append(".toInt()")
+                        }
+                        else if (actual_type.type == CType.Primitive.VALIST) {
+                            append("?.${RuntimeType.KJnaVarargList.jvm_data}")
+                        }
                     }
-                    else if ((actual_type.type == CType.Primitive.U_LONG || actual_type.type == CType.Primitive.U_LONG_LONG) && actual_type.pointer_depth == 0) {
-                        append(".toLong()")
-                    }
-                    else if (actual_type.type == CType.Primitive.U_INT && actual_type.pointer_depth == 0) {
-                        append(".toInt()")
-                    }
-                    else if (actual_type.type.isChar() && actual_type.pointer_depth == 1) {
+                    else if (actual_type.pointer_depth == 1 && actual_type.type.isChar()) {
                         val memorySegment: String = context.importRuntimeType(RuntimeType.memorySegment)
                         arena_used = true
                         append("?.$memorySegment($arena_name)")
+                    }
+                    else {
+                        if (param_type.last() == '?') {
+                            append('?')
+                        }
+
+                        context.importFromCoordinates("java.lang.foreign.MemorySegment")
+                        append(".pointer ?: MemorySegment.NULL")
                     }
 
                     if (index + 1 != function.parameters.size) {
@@ -170,16 +163,40 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                 else if (actual_return_type == CValueType(CType.Primitive.U_LONG, 0)) {
                     append(".toULong()")
                 }
+                else if (actual_return_type == CValueType(CType.Primitive.U_INT, 0)) {
+                    append(".toUInt()")
+                }
                 else if (actual_return_type?.pointer_depth?.let { it > 0 } == true) {
-                    val pointer_constructor: String =
-                        if (actual_return_type.type == CType.Primitive.VOID) context.importRuntimeType(RuntimeType.KJnaPointer)
-                        else context.importRuntimeType(RuntimeType.KJnaTypedPointer) + ".ofNativeObject"
+                    if (actual_return_type.pointer_depth > 1) {
+                        append("?.let { TODO(\"Nested pointers\") }")
+                    }
+                    else {
+                        val pointer_depth: Int
 
-                    for (i in 0 until actual_return_type.pointer_depth) {
-                        append("?.let { $pointer_constructor(it) }")
+                        if (actual_return_type.type is CType.Function) {
+                            val KJnaFunctionPointer: String = context.importRuntimeType(RuntimeType.KJnaFunctionPointer)
+                            append("?.let { KJnaFunctionPointer(it) }")
+
+                            pointer_depth = actual_return_type.pointer_depth - 1
+                        }
+                        else {
+                            pointer_depth = actual_return_type.pointer_depth
+                        }
+
+                        if (pointer_depth > 0) {
+                            val pointer_constructor: String =
+                                if (actual_return_type.type == CType.Primitive.VOID) context.importRuntimeType(RuntimeType.KJnaPointer)
+                                else context.importRuntimeType(RuntimeType.KJnaTypedPointer) + ".ofNativeObject"
+
+                            append("?.let { $pointer_constructor(it) }")
+                        }
                     }
                 }
-            }
+                else if (actual_return_type?.type is CType.Enum && actual_return_type.pointer_depth == 0) {
+                    context.importFromCoordinates(Constants.ENUM_PACKAGE_NAME + '.' + ENUM_CONVERT_FUNCTION_FROM_JVM)
+                    append(".let { $return_type.$ENUM_CONVERT_FUNCTION_FROM_JVM(it) }")
+                }
+            }}
 
             if (arena_used) {
                 context.importFromCoordinates("java.lang.foreign.Arena")
@@ -219,7 +236,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
     }
 
     override fun implementStructField(name: String, index: Int, type: CValueType, type_name: String, struct: CType.Struct, struct_name: String, scope_name: String?, context: BindingGenerator.GenerationScope): String {
-        return implementField(name, index, type, type_name, scope_name, null, context)
+        return implementField(name, index, type, type_name, struct_name, null, false, context)
     }
 
     override fun implementStructToStringMethod(struct: CType.Struct, context: BindingGenerator.GenerationScope): String = buildString {
@@ -232,7 +249,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
             append(field)
             append('=')
             append('$')
-            append(field)
+            append(Constants.formatKotlinFieldName(field))
 
             if (index + 1 != struct.definition?.fields?.size) {
                 append(", ")
@@ -248,7 +265,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
     }
 
     override fun implementUnionField(name: String, index: Int, type: CValueType, type_name: String, union: CType.Union, union_name: String, union_field_name: String?, scope_name: String?, context: BindingGenerator.GenerationScope): String {
-        return implementField(name, index, type, if (type_name.last() == '?') type_name else (type_name + '?'), scope_name, union_field_name, context)
+        return implementField(name, index, type, if (type_name.last() == '?') type_name else (type_name + '?'), scope_name + (union_field_name?.let { ".$it" } ?: ""), union_field_name, true, context)
     }
 
     override fun implementStructCompanionObject(struct: CType.Struct, context: BindingGenerator.GenerationScope): String? = buildString {
@@ -279,7 +296,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                     appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
-                    appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.pointer})")
+                    appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.jvm_pointer})")
                 }
                 appendLine('}')
 
@@ -297,11 +314,23 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
         append("}")
     }
 
+    override fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String =
+        buildString {
+            appendLine("fun ${enm.name}.$ENUM_CONVERT_FUNCTION_TO_JVM(): Int = this.${KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM}")
+            appendLine()
+
+            appendLine("fun ${enm.name}.Companion.$ENUM_CONVERT_FUNCTION_FROM_JVM(value: Int): ${enm.name} =")
+            append("    ${enm.name}.entries.first { it.${KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM} == value }")
+        }
+
     companion object {
         const val STRUCT_VALUE_PROPERTY_NAME: String = "_jextract_value"
         const val MEM_SCOPE_PROPERTY_NAME: String = "_mem_scope"
         private const val LINKER_NAME: String = "_linker"
         private const val FUNCTION_ARENA_NAME: String = "_function_arena"
+
+        private const val ENUM_CONVERT_FUNCTION_TO_JVM: String = "toJvm"
+        private const val ENUM_CONVERT_FUNCTION_FROM_JVM: String = "fromJvm"
 
         fun getJvmPackageName(package_name: String): String =
             package_name + ".jextract"
@@ -314,6 +343,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
         type_name: String,
         scope_name: String?,
         union_field_name: String?,
+        in_union: Boolean,
         context: BindingGenerator.GenerationScope
     ): String = buildString {
         val actual_type: CValueType = type.fullyResolve(context.binder)
@@ -322,7 +352,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
             else actual_type.pointer_depth
 
         val assignable: Boolean =
-            actual_type.type !is CType.Union && (union_field_name != null || pointer_depth > 0 || actual_type.type !is CType.Struct)
+            actual_type.type !is CType.Union && (in_union || pointer_depth > 0 || actual_type.type !is CType.Struct)
 
         val field_type: String =
             if (assignable) "var"
@@ -330,7 +360,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
 
         append("actual $field_type ${Constants.formatKotlinFieldName(name)}: $type_name")
 
-        val name: String = union_field_name ?: name
+        val name: String = Constants.formatKotlinFieldName(name)//union_field_name ?: Constants.formatKotlinFieldName(name)
 
         val jextract_class_name: String = context.importJextractName(scope_name!!)
 
@@ -354,47 +384,42 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                 return@buildString
             }
             is CType.Enum -> {
-                getter = "$type_name.entries.first { it.value == $jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME) }"
-                setter = "$jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME, value.value)"
+                getter = "${type_name.trimEnd('?')}.entries.first { it.${KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM} == $jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME) }"
+                setter = "$jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME, value.${KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM})"
             }
             else -> {
                 if (actual_type.type is CType.Struct && pointer_depth == 0) {
-                    getter = "$type_name($jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME))"
+                    getter = "${type_name.trimEnd('?')}($jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME))"
                     setter = "$jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME, value.$STRUCT_VALUE_PROPERTY_NAME)"
                 }
                 else {
-                    val void_pointer: Boolean = actual_type.type == CType.Primitive.VOID
-                    val pointer_type: String =
-                        if (void_pointer) context.importRuntimeType(RuntimeType.KJnaPointer)
-                        else context.importRuntimeType(RuntimeType.KJnaTypedPointer)
-
                     getter = buildString {
                         append("$jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME)")
 
                         if (pointer_depth == 0) {
-                            if (union_field_name != null && actual_type.type is CType.Primitive) {
-                                context.importFromCoordinates("java.lang.foreign.ValueLayout")
-                                append(".get(")
-                                when (actual_type.type) {
-                                    CType.Primitive.VOID -> throw IllegalStateException()
-                                    CType.Primitive.CHAR,
-                                    CType.Primitive.U_CHAR -> append("ValueLayout.JAVA_CHAR")
-                                    CType.Primitive.SHORT,
-                                    CType.Primitive.U_SHORT -> append("ValueLayout.JAVA_SHORT")
-                                    CType.Primitive.INT,
-                                    CType.Primitive.U_INT -> append("ValueLayout.JAVA_INT")
-                                    CType.Primitive.LONG,
-                                    CType.Primitive.U_LONG,
-                                    CType.Primitive.LONG_LONG,
-                                    CType.Primitive.U_LONG_LONG -> append("ValueLayout.JAVA_LONG")
-                                    CType.Primitive.FLOAT,
-                                    CType.Primitive.DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
-                                    CType.Primitive.LONG_DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
-                                    CType.Primitive.BOOL -> append("ValueLayout.JAVA_BOOLEAN")
-                                    CType.Primitive.VALIST -> append("TODO()")
-                                }
-                                append(", 0)")
-                            }
+                            // if (union_field_name != null && actual_type.type is CType.Primitive) {
+                            //     context.importFromCoordinates("java.lang.foreign.ValueLayout")
+                            //     append(".get(")
+                            //     when (actual_type.type) {
+                            //         CType.Primitive.VOID -> throw IllegalStateException()
+                            //         CType.Primitive.CHAR,
+                            //         CType.Primitive.U_CHAR -> append("ValueLayout.JAVA_CHAR")
+                            //         CType.Primitive.SHORT,
+                            //         CType.Primitive.U_SHORT -> append("ValueLayout.JAVA_SHORT")
+                            //         CType.Primitive.INT,
+                            //         CType.Primitive.U_INT -> append("ValueLayout.JAVA_INT")
+                            //         CType.Primitive.LONG,
+                            //         CType.Primitive.U_LONG,
+                            //         CType.Primitive.LONG_LONG,
+                            //         CType.Primitive.U_LONG_LONG -> append("ValueLayout.JAVA_LONG")
+                            //         CType.Primitive.FLOAT,
+                            //         CType.Primitive.DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
+                            //         CType.Primitive.LONG_DOUBLE -> append("ValueLayout.JAVA_DOUBLE")
+                            //         CType.Primitive.BOOL -> append("ValueLayout.JAVA_BOOLEAN")
+                            //         CType.Primitive.VALIST -> append("TODO()")
+                            //     }
+                            //     append(", 0)")
+                            // }
 
                             if (actual_type.type == CType.Primitive.U_LONG || actual_type.type == CType.Primitive.U_LONG_LONG) {
                                 append(".toULong()")
@@ -402,20 +427,33 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                             else if (actual_type.type == CType.Primitive.U_INT) {
                                 append(".toUInt()")
                             }
+                            else if (actual_type.type == CType.Primitive.U_SHORT) {
+                                append(".toUShort()")
+                            }
+                            else if (actual_type.type == CType.Primitive.CHAR || actual_type.type == CType.Primitive.U_CHAR) {
+                                val convert: String = context.importRuntimeType(RuntimeType.convert)
+                                append(".$convert()")
+                            }
 
                             return@buildString
                         }
 
-                        for (i in 0 until pointer_depth) {
+                        if (actual_type.type is CType.Function) {
+                            val KJnaFunctionPointer: String = context.importRuntimeType(RuntimeType.KJnaFunctionPointer)
+                            append("?.let { $KJnaFunctionPointer(it) }")
+                        }
+                        else {
                             if (type_name.last() == '?') {
                                 append('?')
                             }
 
-                            if (void_pointer) {
-                                append(".let { $pointer_type(it)")
+                            if (actual_type.type == CType.Primitive.VOID && actual_type.pointer_depth == 1) {
+                                val KJnaPointer: String = context.importRuntimeType(RuntimeType.KJnaPointer)
+                                append(".let { $KJnaPointer(it)")
                             }
                             else {
-                                append(".let { $pointer_type.ofNativeObject(it, ")
+                                val KJnaTypedPointer: String = context.importRuntimeType(RuntimeType.KJnaTypedPointer)
+                                append(".let { $KJnaTypedPointer.ofNativeObject(it, ")
 
                                 if (actual_type.type is CType.Struct) {
                                     append(actual_type.type.name)
@@ -428,9 +466,10 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
 
                                 append(')')
                             }
-                        }
 
-                        for (i in 0 until pointer_depth) {
+                            val uncheckedCast: String = context.importRuntimeType(RuntimeType.uncheckedCast)
+                            append(".$uncheckedCast()")
+
                             append(" }")
                         }
                     }
@@ -439,10 +478,10 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                         append("$jextract_class_name.$name($STRUCT_VALUE_PROPERTY_NAME, value")
 
                         if (pointer_depth == 0) {
-                            if (union_field_name != null && actual_type.type is CType.Primitive) {
-                                val memorySegment: String = context.importRuntimeType(RuntimeType.memorySegment)
-                                append("?.$memorySegment($MEM_SCOPE_PROPERTY_NAME)")
-                            }
+                            // if (union_field_name != null && actual_type.type is CType.Primitive) {
+                            //     val memorySegment: String = context.importRuntimeType(RuntimeType.memorySegment)
+                            //     append("?.$memorySegment($MEM_SCOPE_PROPERTY_NAME)")
+                            // }
 
                             if (actual_type.type == CType.Primitive.U_LONG || actual_type.type == CType.Primitive.U_LONG_LONG) {
                                 append(".toLong()")
@@ -450,10 +489,20 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
                             else if (actual_type.type == CType.Primitive.U_INT) {
                                 append(".toInt()")
                             }
+                            else if (actual_type.type == CType.Primitive.SHORT || actual_type.type == CType.Primitive.U_SHORT) {
+                                append(".toShort()")
+                            }
+                            else if (actual_type.type == CType.Primitive.CHAR || actual_type.type == CType.Primitive.U_CHAR) {
+                                val convert: String = context.importRuntimeType(RuntimeType.convert)
+                                append(".$convert()")
+                            }
                         }
-                        else {
-                            for (i in 0 until pointer_depth) {
-                                append("?.pointer")
+                        else if (pointer_depth > 0) {
+                            if (actual_type.type is CType.Function) {
+                                append("?.${RuntimeType.KJnaFunctionPointer.jvm_function}")
+                            }
+                            else {
+                                append("?.${RuntimeType.KJnaTypedPointer.jvm_pointer}")
                             }
                         }
 
@@ -470,7 +519,7 @@ class KJnaBindTargetJvmJextract(): KJnaBindTarget {
         if (assignable) {
             appendLine()
             append("    set(value) { ")
-            if (union_field_name != null) {
+            if (in_union) {
                 append("if (value != null) ")
             }
             append(setter)

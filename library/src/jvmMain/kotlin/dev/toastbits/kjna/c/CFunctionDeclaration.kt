@@ -23,15 +23,19 @@ fun PackageGenerationScope.parseFunctionDeclaration(
         val return_pointer_depth: Int = declarator.pointer()?.Star()?.size ?: 0
         val return_type: CType = declaration.declarationSpecifiers()?.declarationSpecifier()?.let { parseDeclarationSpecifierType(it) } ?: return null
 
-        val declarator_parameters: List<CParser.ParameterDeclarationContext> =
-            declarator.directDeclarator().parameterTypeList()?.parameterList()?.parameterDeclaration() ?: return null
+        val parameter_type_list: CParser.ParameterTypeListContext? = declarator.directDeclarator().parameterTypeList()
 
-        val parameters: List<CFunctionParameter> = declarator_parameters.let { parseFunctionParameters(it) }
+        val declarator_parameters: List<CParser.ParameterDeclarationContext> =
+            parameter_type_list?.parameterList()?.parameterDeclaration() ?: return null
+
+        val parameters: List<CFunctionParameter> = parseFunctionParameters(declarator_parameters)
 
         return CFunctionDeclaration(
             name = name,
             return_type = CValueType(return_type, pointer_depth = return_pointer_depth),
-            parameters = parameters
+            parameters =
+                if (parameter_type_list?.Ellipsis() == null) parameters
+                else parameters + listOf(CFunctionParameter(null, CValueType(CType.Primitive.VALIST, 0)))
         )
     }
     catch (e: Throwable) {

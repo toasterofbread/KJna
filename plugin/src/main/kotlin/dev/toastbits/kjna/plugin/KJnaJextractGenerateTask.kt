@@ -211,12 +211,20 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
 
         private const val JEXTRACT_SYMBOL_LOOKUP_SETTER: String =
 """
-    public static void setLibraryByPath(Path path) {
-        SYMBOL_LOOKUP = SymbolLookup.libraryLookup(path, LIBRARY_ARENA);
+    public static void setLibraryLookupByPaths(Path first_path, Path... additional_paths) {
+        SymbolLookup lookup = SymbolLookup.libraryLookup(first_path, LIBRARY_ARENA);
+        for (Path path : additional_paths) {
+            lookup = lookup.or(SymbolLookup.libraryLookup(path, LIBRARY_ARENA));
+        }
+        SYMBOL_LOOKUP = lookup;
     }
 
-    public static void setLibraryByName(String name) {
-        SYMBOL_LOOKUP = SymbolLookup.libraryLookup(System.mapLibraryName(name), LIBRARY_ARENA);
+    public static void setLibraryLookupByNames(String first_name, String... additional_names) {
+        SymbolLookup lookup = SymbolLookup.libraryLookup(System.mapLibraryName(first_name), LIBRARY_ARENA);
+        for (String name : additional_names) {
+            lookup = lookup.or(SymbolLookup.libraryLookup(System.mapLibraryName(name), LIBRARY_ARENA));
+        }
+        SYMBOL_LOOKUP = lookup;
     }
 """
     }

@@ -383,7 +383,7 @@ class BindingGenerator(
                                 }
                             }
 
-                            append(importRuntimeType(RuntimeType.KJnaFunction))
+                            append(importRuntimeType(RuntimeType.KJnaFunctionPointer))
 
                             // append("((")
 

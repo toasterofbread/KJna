@@ -26,7 +26,7 @@ private fun configureLibraryFile() {
     for (dir in lib_dirs) {
         val file: File = File(dir).resolve(lib_name)
         if (file.isFile) {
-            kjna.libmpv.jextract.MpvClient.setLibraryByPath(file.toPath())
+            kjna.libmpv.jextract.MpvClient.setLibraryLookupByPaths(file.toPath())
             lib_found = true
             break
         }

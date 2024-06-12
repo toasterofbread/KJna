@@ -1,7 +1,7 @@
 package dev.toastbits.kjna.runtime
 
-class FunctionWrapper(private val func: () -> Unit) {
+class FunctionWrapper(private val function: () -> Unit) {
     fun invoke() {
-        func.invoke()
+        function.invoke()
     }
 }

@@ -108,7 +108,8 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
 
                 if (actual_type.type is CType.Function) {
                     if (actual_type.type.data_params == null) {
-                        append("null")
+                        val uncheckedCast: String = context.importRuntimeType(RuntimeType.uncheckedCast)
+                        append("$param_name?.${RuntimeType.KJnaFunctionPointer.native_function}?.$uncheckedCast()")
                     }
                     else {
                         context.importFromCoordinates("kotlinx.cinterop.staticCFunction")
@@ -287,7 +288,7 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
                     appendLine("    throw IllegalStateException(\"Forward declaration cannot be accessed directly\")")
                 }
                 else {
-                    appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.pointer}.$pointedAs())")
+                    appendLine("    return ${struct.name}(from.${RuntimeType.KJnaTypedPointer.native_pointer}.$pointedAs())")
                 }
                 appendLine('}')
 
@@ -360,15 +361,15 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
             val value_accessor: String =
                 if (!enm.has_explicit_value) "value.ordinal"
                 else "value.toInt()"
-            append("    ${enm.name}.entries.first { it.value == $value_accessor }")
+            append("    ${enm.name}.entries.first { it.${KJnaBindTargetShared.ENUM_CLASS_VALUE_PARAM} == $value_accessor }")
         }
 
     companion object {
         const val STRUCT_VALUE_PROPERTY_NAME: String = "_native_value"
         const val MEM_SCOPE_PROPERTY_NAME: String = "_mem_scope"
 
-        const val ENUM_CONVERT_FUNCTION_TO_NATIVE: String = "toNative"
-        const val ENUM_CONVERT_FUNCTION_FROM_NATIVE: String = "fromNative"
+        private const val ENUM_CONVERT_FUNCTION_TO_NATIVE: String = "toNative"
+        private const val ENUM_CONVERT_FUNCTION_FROM_NATIVE: String = "fromNative"
 
         fun getNativePackageName(package_name: String): String =
             package_name + ".cinterop"
@@ -510,9 +511,9 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
                     TODO(type.toString())
                 }
 
-                val KJnaFunction: String = importRuntimeType(RuntimeType.KJnaFunction)
+                val KJnaFunctionPointer: String = importRuntimeType(RuntimeType.KJnaFunctionPointer)
                 importFromCoordinates("kotlinx.cinterop.reinterpret")
-                append("?.let { $KJnaFunction(it.reinterpret()) }")
+                append("?.let { $KJnaFunctionPointer(it.reinterpret()) }")
 
                 // append(".let { _function -> { ")
 

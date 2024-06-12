@@ -34,7 +34,7 @@ fun generateImportBlock(
 
         if (alias != null) {
             append(" as ")
-            append(alias)
+            append(alias.replace(".", "_"))
         }
 
         appendLine()
