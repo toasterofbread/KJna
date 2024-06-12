@@ -14,9 +14,10 @@ kotlin {
 
     val native_targets: List<KotlinNativeTarget> =
         listOf(
-            linuxX64(),
-            linuxArm64(),
-            mingwX64()
+            // Native targets are disabled in this sample because :library is JVM-only
+            // linuxX64(),
+            // linuxArm64(),
+            // mingwX64()
         )
 
     applyDefaultHierarchyTemplate()

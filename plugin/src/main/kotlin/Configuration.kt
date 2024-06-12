@@ -38,7 +38,7 @@ class KJnaConfiguration(
         project.afterEvaluate {
             for (target in generate_task.build_targets + generate_task.disabled_build_targets) {
                 val set_name: String = target.getName() + "Main"
-                kotlin.sourceSets.getByName(set_name).kotlin.srcDir(target.getSourceDirectory(generate_task.source_output_dir))
+                kotlin.sourceSets.findByName(set_name)?.kotlin?.srcDir(target.getSourceDirectory(generate_task.source_output_dir))
             }
         }
     }
