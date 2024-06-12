@@ -3,13 +3,13 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.strumenta.antlrkotlin.gradle.AntlrKotlinTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-// import org.jetbrains.dokka.gradle.DokkaTaskPartial
-// import org.jetbrains.dokka.gradle.AbstractDokkaLeafTask
+import org.jetbrains.dokka.gradle.DokkaTaskPartial
+import org.jetbrains.dokka.gradle.AbstractDokkaLeafTask
 
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
-    // id("org.jetbrains.dokka")
+    id("org.jetbrains.dokka")
     id("com.vanniktech.maven.publish")
     id("com.strumenta.antlr-kotlin")
 }
@@ -71,7 +71,7 @@ mavenPublishing {
     signAllPublications()
 
     configure(KotlinMultiplatform(
-        // javadocJar = JavadocJar.Dokka("dokkaHtml"),
+        javadocJar = JavadocJar.Dokka("dokkaHtml"),
         sourcesJar = true
     ))
 
@@ -106,10 +106,10 @@ mavenPublishing {
     }
 }
 
-// tasks.withType<DokkaTaskPartial>().configureEach {
-//     moduleName.set("KJna Library")
-// }
+tasks.withType<DokkaTaskPartial>().configureEach {
+    moduleName.set("KJna Library")
+}
 
-// tasks.withType<AbstractDokkaLeafTask>().configureEach {
-//     dependsOn("generateKotlinGrammarSource")
-// }
+tasks.withType<AbstractDokkaLeafTask>().configureEach {
+    dependsOn("generateKotlinGrammarSource")
+}
