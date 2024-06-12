@@ -4,7 +4,7 @@ import dev.toastbits.kjna.c.CType
 
 plugins {
     kotlin("multiplatform")
-    id("dev.toastbits.kjna").version("0.0.2")
+    id("dev.toastbits.kjna").version("0.0.3")
 }
 
 kotlin {
