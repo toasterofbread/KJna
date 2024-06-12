@@ -88,9 +88,6 @@ kotlin {
 
     kjna {
         generate {
-            // Use to override Jextract's library loading method (see sample)
-            override_jextract_loader = true
-
             packages(native_targets) {
                 add("kjna.libmpv") {
 
