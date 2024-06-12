@@ -8,17 +8,18 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
+import kotlin.reflect.KClass
 
 actual class KJnaFunctionPointer(val function: MemorySegment) {
     actual companion object {
-        private val linker: Linker by lazy { Linker.nativeLinker() }
+        val linker: Linker by lazy { Linker.nativeLinker() }
         private val arena: Arena by lazy { Arena.ofAuto() }
 
         actual fun getDataParam(function: () -> Unit): KJnaPointer? {
             val handle: MethodHandle =
                 MethodHandles.lookup().bind(
                     KotlinFunction0(function),
-                    "invokeUnit",
+                    "invoke",
                     MethodType.methodType(Void.TYPE)
                 )
             val descriptor: FunctionDescriptor = FunctionDescriptor.ofVoid()
@@ -30,70 +31,33 @@ actual class KJnaFunctionPointer(val function: MemorySegment) {
         actual fun createDataParamFunction2(): KJnaFunctionPointer = createDataParamFunction(2)
         actual fun createDataParamFunction3(): KJnaFunctionPointer = createDataParamFunction(3)
 
-        private fun createDataParamFunction(param_index: Int): KJnaFunctionPointer {
-            val handle: MethodHandle =
-                MethodHandles.lookup().bind(
-                    DataParamFunction(),
-                    "invoke$param_index",
-                    getDataParamFunctionMethodType(param_index)
-                )
-            return KJnaFunctionPointer(linker.upcallStub(handle, getDataParamFunctionDescriptor(param_index), arena))
-        }
-
-        @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE")
-        inline fun <reified T: Any> ofKotlinFunction0(noinline function: () -> T): KJnaFunctionPointer {
-            val method_name: String
-            val method_type: MethodType
-            val descriptor: FunctionDescriptor
-
-            when (T::class) {
-                Int::class -> {
-                    method_name = "invokeInt"
-                    method_type = MethodType.methodType(Int::class.java)
-                    descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT)
-                }
-                else -> throw NotImplementedError(T::class.toString())
-            }
-
-            val handle: MethodHandle =
-                MethodHandles.lookup().bind(
-                    // Type is always erased with lambda or generic class
-                    // Using hardcoded methods for each type is the only way I could find that works
-                    KotlinFunction0(function),
-                    method_name,
-                    method_type
-                )
-            return KJnaFunctionPointer.ofMethodHandle(handle, descriptor)
-        }
-
-        @Suppress("NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "UNCHECKED_CAST")
-        inline fun <reified T: Any, reified P0: Any> ofKotlinFunction1(noinline function: (P0) -> T): KJnaFunctionPointer {
-            val method_name: String
-            val method_type: MethodType
-            val descriptor: FunctionDescriptor
-            val obj: Any
-
-            when (T::class to P0::class) {
-                Int::class to Int::class -> {
-                    method_name = "invokeInt"
-                    method_type = MethodType.methodType(Int::class.java, Int::class.java)
-                    descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
-                    obj = KotlinFunction1Int(function as (Int) -> Any)
-                }
-                else -> throw NotImplementedError("${T::class}, ${P0::class}")
-            }
-
+        fun bindObjectMethod(obj: Any, method_name: String, return_type: KClass<*>, param_types: List<KClass<*>> = emptyList()): KJnaFunctionPointer {
             val handle: MethodHandle =
                 MethodHandles.lookup().bind(
                     obj,
                     method_name,
-                    method_type
+                    MethodType.methodType(return_type.java, param_types.map { it.java })
                 )
-            return KJnaFunctionPointer.ofMethodHandle(handle, descriptor)
+
+            val param_layout_types: Array<ValueLayout> =
+                Array(param_types.size) { param_types[it].getLayout() }
+
+            val descriptor: FunctionDescriptor =
+                if (return_type == Unit::class) FunctionDescriptor.ofVoid(*param_layout_types)
+                else FunctionDescriptor.of(return_type.getLayout(), *param_layout_types)
+
+            return KJnaFunctionPointer(linker.upcallStub(handle, descriptor, arena))
         }
 
-        fun ofMethodHandle(handle: MethodHandle, descriptor: FunctionDescriptor) =
-            KJnaFunctionPointer(linker.upcallStub(handle, descriptor, arena))
+        private fun createDataParamFunction(param_index: Int): KJnaFunctionPointer {
+            val handle: MethodHandle =
+                MethodHandles.lookup().bind(
+                    DataParamFunction(),
+                    DataParamFunction.getMethodName(param_index),
+                    getDataParamFunctionMethodType(param_index)
+                )
+            return KJnaFunctionPointer(linker.upcallStub(handle, getDataParamFunctionDescriptor(param_index), arena))
+        }
 
         private fun getDataParamFunctionDescriptor(param_index: Int): FunctionDescriptor =
             FunctionDescriptor.ofVoid(*Array(param_index + 1) { ValueLayout.ADDRESS })
@@ -113,15 +77,44 @@ actual class KJnaFunctionPointer(val function: MemorySegment) {
             fun invoke1(p0: MemorySegment, p1: MemorySegment) {
                 invokeFunction(p1, 1)
             }
+
+            fun invoke2(p0: MemorySegment, p1: MemorySegment, p2: MemorySegment) {
+                invokeFunction(p2, 2)
+            }
+
+            fun invoke3(p0: MemorySegment, p1: MemorySegment, p2: MemorySegment, p3: MemorySegment) {
+                invokeFunction(p3, 3)
+            }
+
+            companion object {
+                private const val MAX_PARAM_INDEX: Int = 3
+
+                fun getMethodName(param_index: Int): String {
+                    if (param_index > DataParamFunction.MAX_PARAM_INDEX) {
+                        throw NotImplementedError("Current max implemented param index is ${DataParamFunction.MAX_PARAM_INDEX}")
+                    }
+
+                    return "invoke$param_index"
+                }
+            }
         }
+
+        internal class KotlinFunction0(val function: () -> Unit) {
+            fun invoke(): Unit = function()
+        }
+
+        private fun KClass<*>.getLayout(): ValueLayout =
+            when (this) {
+                MemorySegment::class -> ValueLayout.ADDRESS
+                Boolean::class -> ValueLayout.JAVA_BOOLEAN
+                Byte::class -> ValueLayout.JAVA_BYTE
+                Char::class -> ValueLayout.JAVA_CHAR
+                Double::class -> ValueLayout.JAVA_DOUBLE
+                Float::class -> ValueLayout.JAVA_FLOAT
+                Int::class -> ValueLayout.JAVA_INT
+                Long::class -> ValueLayout.JAVA_LONG
+                Short::class -> ValueLayout.JAVA_SHORT
+                else -> throw NotImplementedError(this.toString())
+            }
     }
-}
-
-internal class KotlinFunction0(val function: () -> Any) {
-    fun invokeUnit(): Unit = function() as Unit
-    fun invokeInt(): Int = function() as Int
-}
-
-internal class KotlinFunction1Int(val function: (Int) -> Any) {
-    fun invokeInt(p0: Int): Int = function(p0) as Int
 }
