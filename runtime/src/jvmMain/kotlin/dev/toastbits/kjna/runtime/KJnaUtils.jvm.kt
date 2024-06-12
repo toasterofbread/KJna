@@ -18,7 +18,7 @@ actual object KJnaUtils {
         val linker: Linker = Linker.nativeLinker()
         val lookup: SymbolLookup = linker.defaultLookup()
 
-        val setlocale: MethodHandle = linker.downcallHandle(lookup.find("setlocale").get(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS))
+        val setlocale: MethodHandle = linker.downcallHandle(lookup.find("setlocale").get(), FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS))
         setlocale.invokeExact(category, locale.memorySegment(arena))
     }
 }
