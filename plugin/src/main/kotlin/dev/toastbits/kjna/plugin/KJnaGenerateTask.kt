@@ -103,17 +103,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
         check(targets_intersection.isEmpty()) { "The following build targets were specified as both enabled and disabled: ${targets_intersection}" }
 
         val bind_targets: Map<KJnaBuildTarget, KJnaBindTarget> = (
-            enabled_targets.associateWith { target ->
-                when (target) {
-                    KJnaBuildTarget.SHARED -> KJnaBindTargetShared()
-                    KJnaBuildTarget.JVM -> KJnaBindTargetJvmJextract()
-                    KJnaBuildTarget.NATIVE_ALL,
-                    KJnaBuildTarget.NATIVE_LINUX_X64,
-                    KJnaBuildTarget.NATIVE_LINUX_ARM64,
-                    KJnaBuildTarget.NATIVE_MINGW_X64 -> KJnaBindTargetNativeCinterop()
-                }
-            }
-            + disabled_targets.associateWith { KJnaBindTargetDisabled() }
+            enabled_targets.associateWith { it.getBindTarget() } + disabled_targets.associateWith { KJnaBindTargetDisabled(it.getBindTarget()) }
         )
 
         val parser: CHeaderParser = CHeaderParser((include_dirs + parser_include_dirs).distinct())
@@ -176,7 +166,9 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
 
                 val package_targets: List<KJnaBindTarget> =
                     bind_targets.entries.map { (build_target, bind_target) ->
-                        if (!pkg.enabled || pkg.disabled_targets.contains(build_target)) KJnaBindTargetDisabled() else bind_target
+                        if (build_target != KJnaBuildTarget.SHARED && (!pkg.enabled || pkg.disabled_targets.contains(build_target)))
+                            KJnaBindTargetDisabled(bind_target)
+                        else bind_target
                     }
 
                 return@mapIndexed binder.generateBindings(package_targets)
@@ -204,6 +196,16 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
 
     private fun KotlinTarget.getSourceDir(): String =
         compilations.first().allKotlinSourceSets.map { it.kotlin.sourceDirectories.toList().toString() }.toString()
+
+    private fun KJnaBuildTarget.getBindTarget(): KJnaBindTarget =
+        when (this) {
+            KJnaBuildTarget.SHARED -> KJnaBindTargetShared()
+            KJnaBuildTarget.JVM -> KJnaBindTargetJvmJextract()
+            KJnaBuildTarget.NATIVE_ALL,
+            KJnaBuildTarget.NATIVE_LINUX_X64,
+            KJnaBuildTarget.NATIVE_LINUX_ARM64,
+            KJnaBuildTarget.NATIVE_MINGW_X64 -> KJnaBindTargetNativeCinterop()
+        }
 
     companion object {
         const val NAME: String = "generateKJnaBindings"

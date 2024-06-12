@@ -10,7 +10,7 @@ import dev.toastbits.kjna.binder.KJnaBinder
 import dev.toastbits.kjna.binder.Constants
 import dev.toastbits.kjna.runtime.RuntimeType
 
-class KJnaBindTargetDisabled(): KJnaBindTarget {
+class KJnaBindTargetDisabled(private val base_target: KJnaBindTarget): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
 
     override fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String {
@@ -64,6 +64,9 @@ class KJnaBindTargetDisabled(): KJnaBindTarget {
             }
         }
     }
+
+    override fun implementEnumFileContent(enm: CType.Enum, context: BindingGenerator.GenerationScope): String? =
+        base_target.implementEnumFileContent(enm, context)
 
     private fun BindingGenerator.GenerationScope.getThrowAccessError(): String {
         val KJnaDisabledPackageAccessException: String = importRuntimeType(RuntimeType.KJnaDisabledPackageAccessException)

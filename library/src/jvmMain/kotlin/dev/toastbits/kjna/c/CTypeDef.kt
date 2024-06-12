@@ -38,44 +38,31 @@ internal fun PackageGenerationScope.parseTypedefDeclaration(external_declaration
     }
     specifiers = specifiers.drop(typedef_start)
 
-    // try {
     parseFunctionTypedefDeclaration(specifiers, external_declaration)?.also { return it }
-    // }
-    // catch (e: Throwable) {
-    //     println("AAAAA ${external_declaration.text}")
-    //     println(external_declaration.declaration()?.initDeclaratorList()?.text)
-
-    //     for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {
-    //     }
-
-    //     throw RuntimeException(e)
-    // }
 
     var name: String? = null
     var pointer_depth: Int = 0
     var array_size: Int? = null
 
-    // if (specifiers.size < 3) {
-        for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {
-            val direct_declarator: CParser.DirectDeclaratorContext = declarator.directDeclarator()
+    for (declarator in external_declaration.declaration()?.initDeclaratorList()?.initDeclarator()?.map { it.declarator() }.orEmpty()) {
+        val direct_declarator: CParser.DirectDeclaratorContext = declarator.directDeclarator()
 
-            if (direct_declarator.LeftBracket() != null) {
-                check(direct_declarator.RightBracket() != null)
-                name = declarator.directDeclarator().directDeclarator()!!.text
-                array_size = direct_declarator.assignmentExpression()!!.conditionalExpression()!!.logicalOrExpression()!!.logicalAndExpression()!!.single().text.toInt()
-                break
-            }
-
-            (direct_declarator.Identifier() ?: direct_declarator.directDeclarator()?.Identifier())?.text?.also {
-                name = it
-                pointer_depth = declarator.pointer()?.Star()?.size ?: 0
-            }
-
-            if (name != null) {
-                break
-            }
+        if (direct_declarator.LeftBracket() != null) {
+            check(direct_declarator.RightBracket() != null)
+            name = declarator.directDeclarator().directDeclarator()!!.text
+            array_size = direct_declarator.assignmentExpression()!!.conditionalExpression()!!.logicalOrExpression()!!.logicalAndExpression()!!.single().text.toInt()
+            break
         }
-    // }
+
+        (direct_declarator.Identifier() ?: direct_declarator.directDeclarator()?.Identifier())?.text?.also {
+            name = it
+            pointer_depth = declarator.pointer()?.Star()?.size ?: 0
+        }
+
+        if (name != null) {
+            break
+        }
+    }
 
     val type: CType
 
