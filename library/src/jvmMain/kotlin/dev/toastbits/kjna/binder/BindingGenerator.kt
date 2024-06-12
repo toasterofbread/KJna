@@ -31,11 +31,11 @@ class BindingGenerator(
                 override fun build(): String {
                     val content: String = this.toString()
                     return buildString {
-                        if (annotations.isNotEmpty()) {
-                            for (annotation in annotations) {
-                                append(annotation)
+                        val all_annotations: List<String> = target.getAllFileAnnotations() + annotations
+                        if (all_annotations.isNotEmpty()) {
+                            for (annotation in all_annotations) {
+                                appendLine(annotation)
                             }
-                            appendLine()
                         }
                         appendLine("package $package_coordinates")
 

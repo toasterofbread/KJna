@@ -8,6 +8,7 @@ import dev.toastbits.kjna.binder.KJnaBinder
 
 sealed interface KJnaBindTarget {
     fun getClassModifiers(): List<String> = emptyList()
+    fun getAllFileAnnotations(): List<String> = emptyList()
 
     fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String
 

@@ -15,6 +15,8 @@ import withIndex
 class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
 
+    override fun getAllFileAnnotations(): List<String> = listOf("@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)")
+
     override fun implementFunction(function: CFunctionDeclaration, function_header: String, header_class_name: String, context: BindingGenerator.GenerationScope): String {
         val arena_name: String = "_arena"
         var arena_used: Boolean = false

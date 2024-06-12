@@ -22,6 +22,14 @@ kotlin {
 
     applyDefaultHierarchyTemplate()
 
+    // for (target in native_targets) {
+    //     target.binaries {
+    //         executable {
+    //             entryPoint = "dev.toastbits.sample.main"
+    //         }
+    //     }
+    // }
+
     kjna {
         generate {
             packages(native_targets) {
@@ -45,7 +53,7 @@ kotlin {
 
         val commonMain by getting {
             dependencies {
-                implementation(project(":library"))
+                // implementation(project(":library"))
                 implementation(project(":runtime"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
             }
