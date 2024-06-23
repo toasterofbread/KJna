@@ -103,14 +103,28 @@ fun CType.Typedef.resolve(getTypedef: (String) -> CTypedef?): CValueType {
         }
     }
 
-    when (passed.last()) {
-        "size_t" -> return CValueType(CType.Primitive.U_LONG, 0)
-        "wchar_t" -> return CValueType(CType.Primitive.CHAR, 0)
-        "__builtin_va_list" -> return CValueType(CType.Primitive.VALIST, 0)
-    }
+    getBuiltInTypedef(passed.last())?.also { return it }
 
     throw RuntimeException("Unresolved typedef '$this' -> '${passed.last()}' (${passed.size})")
 }
+
+fun getBuiltInTypedef(name: String): CValueType? =
+    when (name) {
+        "int8_t" -> CValueType(CType.Primitive.SHORT, 0)
+        "uint8_t" -> CValueType(CType.Primitive.U_SHORT, 0)
+        "int16_t" -> CValueType(CType.Primitive.SHORT, 0)
+        "uint16_t" -> CValueType(CType.Primitive.U_SHORT, 0)
+        "int32_t" -> CValueType(CType.Primitive.INT, 0)
+        "uint32_t" -> CValueType(CType.Primitive.U_INT, 0)
+        "int64_t" -> CValueType(CType.Primitive.LONG, 0)
+        "uint64_t" -> CValueType(CType.Primitive.U_LONG, 0)
+
+        "size_t" -> CValueType(CType.Primitive.U_LONG, 0)
+        "wchar_t" -> CValueType(CType.Primitive.CHAR, 0)
+        "va_list" -> CValueType(CType.Primitive.VALIST, 0)
+        "__builtin_va_list" -> CValueType(CType.Primitive.VALIST, 0)
+        else -> null
+    }
 
 fun CValueType.fullyResolve(binder: KJnaBinder, ignore_typedef_overrides: Boolean = false): CValueType {
     if (type !is CType.Typedef) {

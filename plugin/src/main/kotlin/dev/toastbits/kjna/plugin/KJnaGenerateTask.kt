@@ -36,7 +36,12 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
         listOf(
             "/usr/include/",
             "C:/msys64/mingw64/include/"
-        )
+        ) + System.getenv("CMAKE_INCLUDE_PATH").orEmpty().split(":").filter { it.isNotBlank() }
+    override var arch_include_dirs: Map<KJnaGenerationOptions.Arch, List<String>> = mapOf(
+        KJnaGenerationOptions.Arch.x86_64 to listOf("/usr/include/x86_64-linux-gnu"),
+        KJnaGenerationOptions.Arch.arm64 to listOf("/usr/include/aarch64-linux-gnu")
+    )
+    override var lib_dirs: List<String> = System.getenv("LD_LIBRARY_PATH").orEmpty().split(":").filter { it.isNotBlank() }
     override var parser_include_dirs: List<String> = emptyList()
     override var override_jextract_loader: Boolean = false
 
@@ -60,7 +65,7 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
     @get:Internal
     private val configureNativeDefs: KJnaConfigureNativeDefsTask = project.tasks.register(KJnaConfigureNativeDefsTask.NAME, KJnaConfigureNativeDefsTask::class.java).get()
 
-    fun setNativeDefFiles(def_files: List<List<File>>) {
+    fun setNativeDefFiles(def_files: List<List<Pair<File, KJnaGenerationOptions.Arch>>>) {
         configureNativeDefs.native_def_files = def_files
     }
 
@@ -71,6 +76,8 @@ abstract class KJnaGenerateTask: DefaultTask(), KJnaGenerationOptions {
             if (build_targets.any { it.isNative() }) {
                 configureNativeDefs.packages = packages
                 configureNativeDefs.include_dirs = include_dirs
+                configureNativeDefs.arch_include_dirs = arch_include_dirs
+                configureNativeDefs.lib_dirs = lib_dirs
                 configureNativeDefs.output_directory = native_def_output_dir
                 dependsOn(configureNativeDefs)
             }

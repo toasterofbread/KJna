@@ -252,7 +252,7 @@ private fun PackageGenerationScope.parseTypeSpecifier(type_specifier: CParser.Ty
 
 private fun parseConstantExpression(expression: String, values: Map<String, Int>, parser: CHeaderParser): Int {
     try {
-        return expression.tryAllOperations(values, parser, 0)!!
+        return expression.tryAllOperations(values, parser)!!
     }
     catch (e: Throwable) {
         throw RuntimeException("Parsing constant value expression '$expression' failed ($values)", e)
@@ -308,7 +308,7 @@ private enum class DoubleOperation {
         }
 }
 
-private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderParser, depth: Int, region: IntRange = indices): Int? {
+fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderParser, depth: Int = 0, region: IntRange = indices): Int? {
     check(region.size != 0) { "Empty expression ($region, $this)" }
     check(depth < 100) { "tryAllOperations recursion depth reached 100 ($region, $this)" }
 
@@ -326,11 +326,6 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
     val first: Char = get(region.start)
 
     if (first.isDigit()) {
-        val last_digit: Int = region.last { get(it).isDigit() }
-        if (last_digit != -1) {
-            substring(region.start, last_digit + 1).toIntOrNull()?.let { return it * multiplier }
-        }
-
         if (first == '0') {
             when (getOrNull(region.start + 1)) {
                 'x' -> {
@@ -341,6 +336,11 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
                     return substring(region.start + 2, region.endInclusive + 1).toInt(2) * multiplier
                 }
             }
+        }
+
+        val last_digit: Int = region.last { get(it).isDigit() }
+        if (last_digit != -1) {
+            substring(region.start, last_digit + 1).toIntOrNull()?.let { return it * multiplier }
         }
     }
     else if (region.size == 3 && first == '\'' && get(region.endInclusive) == '\'') {
@@ -353,6 +353,10 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
         parser.getConstantExpressionValue(string)?.also { return it * multiplier }
 
         if (parser.getTypedef(string) != null) {
+            return null
+        }
+
+        if (getBuiltInTypedef(string) != null) {
             return null
         }
     }
@@ -420,7 +424,7 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
         while (seq.isNotEmpty()) {
             var part: Any = seq.removeFirst()
 
-            check(part != region) { "Part $part is the entire region" }
+            check(part != region) { "Part $part (${substring(region)}) is the entire region" }
 
             if (part is IntRange) {
                 val string: String = substring(part)
@@ -474,7 +478,7 @@ private fun String.tryAllOperations(values: Map<String, Int>, parser: CHeaderPar
         }
     }
     catch (e: Throwable) {
-        throw RuntimeException("Parsing sequence failed ($seq, $this, $region)", e)
+        throw RuntimeException("Parsing sequence failed (${seq.map { if (it is IntRange) substring(it) else it }}, $this, $region)", e)
     }
 
     throw NotImplementedError(this)

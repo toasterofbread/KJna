@@ -13,7 +13,7 @@ import org.anarres.cpp.*
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class CHeaderParser(include_dirs: List<String>) {
+open class CHeaderParser(include_dirs: List<String>) {
     data class PackageInfo(
         val headers: Map<String, Header>,
         val structs: Map<String, CType.Struct>,
@@ -34,7 +34,7 @@ class CHeaderParser(include_dirs: List<String>) {
     private val parsed_structs: MutableMap<String, CType.Struct> = mutableMapOf()
     private val parsed_typedefs: MutableMap<String, CTypedef> = mutableMapOf()
 
-    private val include_dirs: List<Path> = include_dirs.map { Paths.get(it) }
+    private val include_dirs: List<Path> = (include_dirs + getEnvironmentIncludeDirs()).map { Paths.get(it) }
     private var all_include_dirs: List<Path> = this.include_dirs
     private var typedef_overrides: Map<String, CValueType> = emptyMap()
 
@@ -161,6 +161,36 @@ class CHeaderParser(include_dirs: List<String>) {
     fun getHeaderFile(path: String): File =
         getHeaderFileOrNull(path) ?: throw RuntimeException("Could not find header file for '$path' relatively or in $all_include_dirs")
 
+    open fun getEnvironmentIncludeDirs(): List<String> {
+        val dirs: MutableList<String> = System.getenv("C_INCLUDE_PATH")?.split(":")?.filter { it.isNotBlank() }.orEmpty().toMutableList()
+
+        System.getenv("NIX_CFLAGS_COMPILE")?.also { nix_cflags_compile ->
+            var head: Int = 0
+            while (true) {
+                val include_start: Int = nix_cflags_compile.indexOf("-isystem", head)
+                if (include_start == -1) {
+                    break
+                }
+
+                val path_start: Int = nix_cflags_compile.indexOfFirst(include_start + 8) { !it.isWhitespace() }
+                if (path_start == -1) {
+                    break
+                }
+
+                var path_end: Int = nix_cflags_compile.indexOf(' ', path_start)
+                if (path_end == -1) {
+                    dirs.add(nix_cflags_compile.substring(path_start))
+                    break
+                }
+
+                dirs.add(nix_cflags_compile.substring(path_start, path_end))
+                head = path_end
+            }
+        }
+
+        return dirs
+    }
+
     internal fun getTypedef(name: String): CTypedef? = typedef_overrides[name]?.let { CTypedef(name, it) } ?: parsed_typedefs[name]
 
     internal fun getConstantExpressionValue(name: String): Int? {
@@ -280,3 +310,6 @@ private fun <K, V, I> Collection<I>.flattenMaps(onConflict: ((key: K, value: V, 
     }
     return flat_map
 }
+
+fun String.indexOfFirst(from: Int, predicate: (Char) -> Boolean): Int =
+    substring(from).indexOfFirst(predicate).takeIf { it != -1 }?.plus(from) ?: -1

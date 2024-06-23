@@ -10,6 +10,8 @@ import dev.toastbits.kjna.plugin.KJnaBuildTarget
  * @property build_targets bindings for targets in this list will be generated as normal, unless disabled in a specific package.
  * @property disabled_build_targets bindings for targets in this list will be generated in the disabled state. See [dev.toastbits.kjna.plugin.KJnaGeneratePackagesConfiguration.Package.enabled],
  * @property include_dirs paths of directories to search in when looking for C headers to parse.
+ * @property arch_include_dirs paths of architecture-specific directories to search in when looking for C headers to parse.
+ * @property lib_dirs paths of directories to search in when looking for C libraries.
  * @property parser_include_dirs paths of directories to search in when looking for C headers to parse. Only passed to KJna's internal parser.
  * @property override_jextract_loader if true, the SYMBOL_LOOKUP property of each package's main Jextract class will not be initialised automatically, and must instead be set by the user before being accessed. See [dev.toastbits.kjna.plugin.KJnaGeneratePackageHeaderConfiguration.override_jextract_loader].
  * @property source_output_dir the directory in which to output generated Kotlin source files. Defaults to /<project>/build/kjna/src.
@@ -30,6 +32,12 @@ interface KJnaGenerationOptions {
     var include_dirs: List<String>
 
     @get:Input
+    var arch_include_dirs: Map<Arch, List<String>>
+
+    @get:Input
+    var lib_dirs: List<String>
+
+    @get:Input
     var parser_include_dirs: List<String>
 
     @get:Input
@@ -43,4 +51,8 @@ interface KJnaGenerationOptions {
 
     @get:OutputDirectory
     var native_def_output_dir: File
+
+    enum class Arch {
+        x86_64, arm64
+    }
 }

@@ -36,12 +36,15 @@ open class KJnaPrepareJextractTask: DefaultTask(), KJnaJextractBinaryOptions {
     }
 
     @Internal
-    fun getFinalJextractBinaryFile(): File = getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_exe_path)
+    fun getFinalJextractBinaryFile(): File = 
+        getSpecifiedOrSystemJextractBinary() ?: jextract_archive_extract_directory.resolve(jextract_archive_exe_path)
 
     private fun getSpecifiedOrSystemJextractBinary(): File? {
         jextract_binary?.also {
             return it
         }
+
+        System.getenv("JEXTRACT_PATH")?.takeIf { it.isNotBlank() }?.also { return File(it) }
 
         // TODO | Get system binary
         return null

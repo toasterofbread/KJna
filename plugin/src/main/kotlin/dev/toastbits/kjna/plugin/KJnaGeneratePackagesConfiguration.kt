@@ -31,6 +31,7 @@ data class KJnaGeneratePackagesConfiguration(
      * @property headers a list of configurations for C headers to generate bindings for.
      * @property libraries a list of shared library names to link this package against (e.g. 'curl', not 'libcurl' or 'libcurl.so').
      * @property include_dirs paths of directories to search in when looking for C headers to parse.
+     * @property lib_dirs paths of directories to search in when looking for C libraries.
      * @property parser_ignore_headers a list of headers that should be ignored by KJna's parser.
      * @property overrides configuration for package-specific overrides to the binding generation process.
      * @property jextract_runtime_options options specific to jextract. Can also be configured for the entire generation.
@@ -42,6 +43,7 @@ data class KJnaGeneratePackagesConfiguration(
         var headers: List<KJnaGeneratePackageHeaderConfiguration> = emptyList(),
         var libraries: List<String> = emptyList(),
         var include_dirs: List<String> = emptyList(),
+        var lib_dirs: List<String> = emptyList(),
         var parser_ignore_headers: List<String> = emptyList(),
         var overrides: PackageOverrides = PackageOverrides(),
         var jextract_runtime_options: KJnaJextractRuntimeOptionsImpl = KJnaJextractRuntimeOptionsImpl(),
@@ -172,14 +174,20 @@ fun KJnaGeneratePackagesConfiguration.Package.addToCompilation(
     return def_file
 }
 
-fun KJnaGeneratePackagesConfiguration.Package.createDefFile(def_file: File, parser: CHeaderParser, options: KJnaCinteropRuntimeOptions) {
+fun KJnaGeneratePackagesConfiguration.Package.createDefFile(
+    def_file: File,
+    parser: CHeaderParser,
+    options: KJnaCinteropRuntimeOptions,
+    extra_include_dirs: List<String>,
+    extra_lib_dirs: List<String>
+) {
     if (!def_file.exists()) {
         def_file.ensureParentDirsCreated()
         def_file.createNewFile()
     }
 
-    val compiler_opts: List<String> = include_dirs.map { "-I$it" }
-    val linker_opts: List<String> = libraries.map { "-l$it" }
+    val compiler_opts: List<String> = (include_dirs + extra_include_dirs).map { "-I$it" }
+    val linker_opts: List<String> = libraries.map { "-l$it" } + (lib_dirs + extra_lib_dirs).map { "-L$it" }
     val header_files: List<String> = options.extra_headers + headers.mapNotNull { if (it.class_name == null) null else parser.getHeaderFile(it.header_path).absolutePath }
 
     def_file.writeText("""

@@ -126,6 +126,12 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
                         cls = overrideJextractLoader(main_file, cls)
                     }
                 }
+
+                for (file in output_directory.walk()) {
+                    if (file.name.endsWith(".java")) {
+                        processJextractGenFile(file)
+                    }
+                }
             }
         }
     }
@@ -144,6 +150,66 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
         if (result != 0) {
             throw GradleException("Jextract failed ($result).\nCommand: $binary ${args.joinToString(" ")}\nstderr: $stderr")
         }
+    }
+
+    private data class UnnamedIdentifier(
+        var identifier: String? = null,
+        val lines: MutableMap<Int, IntRange> = mutableMapOf()
+    )
+
+    private fun processJextractGenFile(file: File) {
+        val lines: MutableList<String> = file.readLines().toMutableList()
+        val unnamed: MutableMap<String, UnnamedIdentifier> = mutableMapOf()
+        
+        for ((index, line) in lines.withIndex()) {
+            var start: Int = 0
+            var last_identifier: UnnamedIdentifier? = null
+
+            while (true) {
+                val unnamed_start: Int = line.indexOf(" (unnamed at ", start)
+                if (unnamed_start == -1) {
+                    break
+                }
+
+                val unnamed_end: Int = line.indexOf(")", unnamed_start)
+                check(unnamed_end != -1) { "$file ($index)" }
+
+                val path: String = line.substring(unnamed_start + 13, unnamed_end)
+                last_identifier = unnamed.getOrPut(path) { UnnamedIdentifier() }
+                
+                last_identifier.lines[index] = line.substring(0, unnamed_start).indexOfLast { it.isWhitespace() || it == '.' || it == '"' } + 1 .. unnamed_end
+
+                start = unnamed_end
+            }
+
+            if (last_identifier != null) {
+                val withname_start: Int = line.indexOf(".withName(\"", start)
+                if (withname_start != -1) {
+                    val withName_end: Int = line.indexOf("\")", withname_start + 1)
+                    check(withName_end != -1) { "$file ($index)" }
+                    
+                    last_identifier.identifier = line.substring(withname_start + 11, withName_end)
+                }
+            }
+        }
+
+        if (unnamed.isEmpty()) {
+            return
+        }
+
+        for ((path, identifier) in unnamed) {
+            for ((line, range) in identifier.lines) {
+                val first: Char = lines[line].first { !it.isWhitespace() }
+                if (first == '/' || first == '*') {
+                    continue
+                }
+                
+                val final_identifier: String = identifier.identifier ?: throw NullPointerException("$file $line $range")
+                lines[line] = lines[line].replaceRange(range, final_identifier + "\u0000".repeat((range.endInclusive - range.start + 1) - final_identifier.length))
+            }
+        }
+
+        file.writeText(lines.joinToString("\n").filter { it != '\u0000' })
     }
 
     private fun overrideJextractLoader(main_file: File, class_name: String): String? {

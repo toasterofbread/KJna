@@ -5,7 +5,7 @@ plugins {
     kotlin("plugin.serialization")
     id("org.jetbrains.dokka")
     id("com.gradle.plugin-publish").version("1.2.1")
-    signing
+    // signing
 }
 
 group = "dev.toastbits.kjna"

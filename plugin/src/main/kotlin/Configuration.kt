@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
+import org.jetbrains.kotlin.konan.target.Architecture
 import java.io.File
 
 @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE") // For KotlinMultiplatformExtension.project
@@ -31,7 +32,9 @@ class KJnaConfiguration(
             task.withJava()
         }
 
-        project.tasks.matching { it is KotlinCompilationTask<*> || it is CInteropProcess }.all { task ->
+        project.tasks.matching {
+            it is KotlinCompilationTask<*> || it is CInteropProcess || it.name.lowercase().endsWith("sourcesjar")
+        }.all { task ->
             task.dependsOn(generate_task)
         }
 
@@ -50,12 +53,18 @@ class KJnaGenerateConfiguration(
     fun packages(native_targets: List<KotlinNativeTarget> = emptyList(), configure: KJnaGeneratePackagesConfiguration.() -> Unit) {
         configure(packages)
 
-        val def_files: MutableList<List<File>> = mutableListOf()
+        val def_files: MutableList<List<Pair<File, KJnaGenerationOptions.Arch>>> = mutableListOf()
 
         for (pkg in packages.packages) {
             def_files.add(native_targets.map { target ->
+                val arch: KJnaGenerationOptions.Arch =
+                    when (target.konanTarget.architecture) {
+                        Architecture.X64 -> KJnaGenerationOptions.Arch.x86_64
+                        Architecture.ARM64 -> KJnaGenerationOptions.Arch.arm64
+                        else -> throw NotImplementedError("Unknown architecture ${target.konanTarget.architecture}")
+                    }
                 val compilation: KotlinNativeCompilation = target.compilations.getByName(KotlinCompilation.MAIN_COMPILATION_NAME)
-                pkg.addToCompilation(compilation, native_def_output_dir)
+                return@map Pair(pkg.addToCompilation(compilation, native_def_output_dir), arch)
             })
         }
 

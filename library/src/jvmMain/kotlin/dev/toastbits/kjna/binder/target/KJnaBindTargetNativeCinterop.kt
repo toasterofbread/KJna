@@ -12,6 +12,8 @@ import dev.toastbits.kjna.binder.Constants
 import dev.toastbits.kjna.binder.KJnaBinder
 import withIndex
 
+private class UnimplementedGenerationException(override val message: String): Throwable()
+
 class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
     override fun getClassModifiers(): List<String> = listOf("actual")
 
@@ -23,7 +25,7 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
 
         var annotations: String = ""
 
-        val body: String = buildString {
+        val body: String = try { buildString {
             val actual_return_type: CValueType? = function?.return_type?.fullyResolve(context.binder)
 
             val return_type: String? =
@@ -186,6 +188,9 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
             append(')')
 
             append(context.cToK(actual_return_type, return_type?.last() == '?', function?.return_type))
+        } }
+        catch (e: UnimplementedGenerationException) {
+            "    TODO(\"Unimplemented generation: ${e.message}\")"
         }
 
         return buildString {
@@ -650,8 +655,7 @@ class KJnaBindTargetNativeCinterop(): KJnaBindTarget {
     private fun BindingGenerator.GenerationScope.kToC(type: CValueType, nullable: Boolean, original_type: CValueType?, getMemScope: () -> String, auto_string: Boolean = true): String =
         buildString {
             if (type.type == CType.Primitive.VALIST) {
-                append("?.let { TODO(\"CType.Primitive.VALIST\") }")
-                return@buildString
+                throw UnimplementedGenerationException("CType.Primitive.VALIST")
             }
 
             if (type.type !is CType.Enum && ((!type.type.isChar() && type.pointer_depth >= 1) || type.pointer_depth >= 2)) {

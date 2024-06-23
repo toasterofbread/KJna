@@ -4,7 +4,7 @@ import dev.toastbits.kjna.c.CType
 
 plugins {
     kotlin("multiplatform")
-    id("dev.toastbits.kjna").version("0.0.3")
+    id("dev.toastbits.kjna").version("0.0.4")
 }
 
 kotlin {
@@ -21,14 +21,6 @@ kotlin {
         )
 
     applyDefaultHierarchyTemplate()
-
-    // for (target in native_targets) {
-    //     target.binaries {
-    //         executable {
-    //             entryPoint = "dev.toastbits.sample.main"
-    //         }
-    //     }
-    // }
 
     kjna {
         generate {
