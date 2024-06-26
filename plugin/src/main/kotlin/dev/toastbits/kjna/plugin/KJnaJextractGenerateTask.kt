@@ -60,7 +60,8 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
                     mutableListOf(
                         parser.getHeaderFile(header.header_path).absolutePath,
                         "--target-package", target_package,
-                        "--header-class-name", header_class_name
+                        "--header-class-name", header_class_name,
+                        "--use-system-load-library"
                     )
 
                 for (macro in runtime_options.macros) {
@@ -160,7 +161,7 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
     private fun processJextractGenFile(file: File) {
         val lines: MutableList<String> = file.readLines().toMutableList()
         val unnamed: MutableMap<String, UnnamedIdentifier> = mutableMapOf()
-        
+
         for ((index, line) in lines.withIndex()) {
             var start: Int = 0
             var last_identifier: UnnamedIdentifier? = null
@@ -176,7 +177,7 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
 
                 val path: String = line.substring(unnamed_start + 13, unnamed_end)
                 last_identifier = unnamed.getOrPut(path) { UnnamedIdentifier() }
-                
+
                 last_identifier.lines[index] = line.substring(0, unnamed_start).indexOfLast { it.isWhitespace() || it == '.' || it == '"' } + 1 .. unnamed_end
 
                 start = unnamed_end
@@ -187,7 +188,7 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
                 if (withname_start != -1) {
                     val withName_end: Int = line.indexOf("\")", withname_start + 1)
                     check(withName_end != -1) { "$file ($index)" }
-                    
+
                     last_identifier.identifier = line.substring(withname_start + 11, withName_end)
                 }
             }
@@ -203,7 +204,7 @@ open class KJnaJextractGenerateTask: DefaultTask(), KJnaJextractRuntimeOptions {
                 if (first == '/' || first == '*') {
                     continue
                 }
-                
+
                 val final_identifier: String = identifier.identifier ?: throw NullPointerException("$file $line $range")
                 lines[line] = lines[line].replaceRange(range, final_identifier + "\u0000".repeat((range.endInclusive - range.start + 1) - final_identifier.length))
             }
