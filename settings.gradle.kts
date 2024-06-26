@@ -3,7 +3,7 @@ rootProject.name = "KJna"
 include(":plugin")
 include(":library")
 include(":runtime")
-include(":sample")
+// include(":sample")
 
 pluginManagement {
     repositories {
