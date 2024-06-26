@@ -68,7 +68,7 @@ mavenPublishing {
     coordinates("dev.toastbits.kjna", "library", project_version)
 
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
-    // signAllPublications()
+    signAllPublications()
 
     configure(KotlinMultiplatform(
         javadocJar = JavadocJar.Dokka("dokkaHtml"),
